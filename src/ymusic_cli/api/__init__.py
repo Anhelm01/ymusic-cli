@@ -191,6 +191,16 @@ class YMusicAPI:
             return name or "user"
         return "user"
 
+    @property
+    def has_plus(self) -> bool:
+        """Check if the user has an active Yandex Plus subscription."""
+        try:
+            if self._client and self._client.me and self._client.me.plus:
+                return bool(self._client.me.plus.has_plus)
+        except Exception:
+            pass
+        return False
+
     # ── Library ──────────────────────────────────────────────
 
     def get_liked_tracks(self, limit: int = 50) -> list[TrackInfo]:

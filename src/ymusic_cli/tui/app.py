@@ -169,6 +169,14 @@ class MainScreen(Screen):
         # Set app title with username
         app = self._get_app()
         self.app.title = f"YMusic CLI — {app.api.username}"
+        # Warn if no Plus subscription
+        if not app.api.has_plus:
+            self.notify(
+                "⚠️ No Yandex Plus subscription detected. "
+                "Playback may be limited to 30-second previews.",
+                timeout=8,
+                severity="warning",
+            )
         # Load initial content
         self._load_liked()
         # Start position update timer

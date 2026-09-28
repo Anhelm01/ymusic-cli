@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import logging
+import shutil
 import threading
 from typing import Callable, Optional
 
 import mpv
 
 from ymusic_cli.api import TrackInfo, YMusicAPI
+
+log = logging.getLogger(__name__)
+
+
+def check_mpv_available() -> bool:
+    """Check if mpv is available on the system."""
+    return shutil.which("mpv") is not None
 
 
 class PlayerState:
