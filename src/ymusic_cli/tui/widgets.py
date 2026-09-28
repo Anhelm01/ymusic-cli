@@ -1,418 +1,213 @@
-"""Custom Textual widgets for YMusic CLI."""
+"""Cmus-style Linux terminal widgets for YMusic CLI."""
 
 from __future__ import annotations
 
+from typing import Optional
 from textual.app import ComposeResult
 from textual.widget import Widget
-from textual.widgets import Static, Label, ListView, ListItem, ProgressBar, Input, Button
-from textual.containers import Horizontal, Vertical
-from textual.reactive import reactive
-from textual.message import Message
+from textual.widgets import DataTable, Static, Input, Label
+from textual.containers import Vertical, Horizontal
+from textual.binding import Binding
+from textual.screen import ModalScreen
+from rich.text import Text
 
 from ymusic_cli.api import TrackInfo
+from ymusic_cli.player import PlayerState
 
 
-# ── Track List Widget ────────────────────────────────────────
+class CmusTable(DataTable):
+    """Full-width terminal track table with Vim navigation."""
 
-
-class TrackSelected(Message):
-    """Posted when a track is selected (Enter / click)."""
-
-    def __init__(self, track: TrackInfo, index: int, tracks: list[TrackInfo]) -> None:
-        super().__init__()
-        self.track = track
-        self.index = index
-        self.tracks = tracks
-
-
-class TrackItem(ListItem):
-    """A single track row in the list."""
-
-    DEFAULT_CSS = """
-    TrackItem {
-        height: 1;
-        padding: 0 1;
-    }
-    TrackItem:hover {
-        background: $primary 15%;
-    }
-    TrackItem.--highlight {
-        background: $primary 30%;
-    }
-    TrackItem.playing {
-        color: $success;
-    }
-    TrackItem .track-num {
-        width: 4;
-        color: $text-muted;
-    }
-    TrackItem .track-text {
-        width: 1fr;
-    }
-    TrackItem .track-duration {
-        width: 6;
-        text-align: right;
-        color: $text-muted;
-    }
-    TrackItem .track-row-inner {
-        height: 1;
-    }
-    """
-
-    def __init__(self, track: TrackInfo, index: int, is_playing: bool = False) -> None:
-        super().__init__()
-        self.track = track
-        self.track_index = index
-        self.is_playing = is_playing
-        if is_playing:
-            self.add_class("playing")
-
-    def compose(self) -> ComposeResult:
-        prefix = "▶" if self.is_playing else " "
-        num = f"{self.track_index + 1:>3}"
-        text = f"{self.track.title}  —  {self.track.artists}"
-        with Horizontal(classes="track-row-inner"):
-            yield Label(f"{prefix}{num}", classes="track-num")
-            yield Label(text, classes="track-text")
-            yield Label(self.track.duration_str, classes="track-duration")
-
-    def update_playing(self, is_playing: bool) -> None:
-        self.is_playing = is_playing
-        prefix = "▶" if is_playing else " "
-        num = f"{self.track_index + 1:>3}"
-        try:
-            self.query_one(".track-num", Label).update(f"{prefix}{num}")
-        except Exception:
-            pass
-        self.set_class(is_playing, "playing")
-
-
-class TrackList(Widget):
-    """Scrollable list of tracks with selection support."""
-
-    DEFAULT_CSS = """
-    TrackList {
-        height: 1fr;
-    }
-    TrackList #track-listview {
-        height: 1fr;
-    }
-    """
-
-    tracks: reactive[list[TrackInfo]] = reactive(list, always_update=True)
-    playing_index: reactive[int] = reactive(-1)
+    BINDINGS = [
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("g", "scroll_top", "Top", show=False),
+        Binding("G", "scroll_bottom", "Bottom", show=False),
+        Binding("ctrl+d", "page_down", "Page Down", show=False),
+        Binding("ctrl+u", "page_up", "Page Up", show=False),
+    ]
 
     def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self._list_view: ListView | None = None
+        super().__init__(cursor_type="row", id="track-table", **kwargs)
+
+
+class TopBar(Static):
+    """Top status header showing numbered views and user status."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(id="top-bar", **kwargs)
+        self.active_view = 2
+        self.liked_count = 0
+        self.view_detail = ""
+        self.username = "User"
+        self.has_plus = True
+
+    def update_header(
+        self,
+        active_view: int,
+        username: str,
+        has_plus: bool,
+        liked_count: int = 0,
+        detail: str = "",
+    ) -> None:
+        self.active_view = active_view
+        self.username = username
+        self.has_plus = has_plus
+        self.liked_count = liked_count
+        self.view_detail = detail
+        self.render_bar()
+
+    def render_bar(self) -> None:
+        t = Text()
+
+        # View 1: Wave
+        v1_style = "bold #00ff7f reverse" if self.active_view == 1 else "bold #00bfff"
+        t.append(" [1: Wave] ", style=v1_style)
+        t.append(" ")
+
+        # View 2: Liked
+        v2_label = f" [2: Liked ({self.liked_count})] " if self.liked_count else " [2: Liked] "
+        v2_style = "bold #00ff7f reverse" if self.active_view == 2 else "bold #00bfff"
+        t.append(v2_label, style=v2_style)
+        t.append(" ")
+
+        # View 3: Playlists
+        v3_label = f" [3: Playlists > {self.view_detail}] " if (self.active_view == 3 and self.view_detail) else " [3: Playlists] "
+        v3_style = "bold #00ff7f reverse" if self.active_view == 3 else "bold #00bfff"
+        t.append(v3_label, style=v3_style)
+        t.append(" ")
+
+        # View 4: Search
+        v4_label = f" [4: Search: \"{self.view_detail}\"] " if (self.active_view == 4 and self.view_detail) else " [4: Search] "
+        v4_style = "bold #00ff7f reverse" if self.active_view == 4 else "bold #00bfff"
+        t.append(v4_label, style=v4_style)
+
+        # Right side: User & Plus badge
+        plus_text = " [Plus]" if self.has_plus else " [No Plus]"
+        plus_style = "bold #00ff7f" if self.has_plus else "bold #ff5555"
+        user_info = f"│ {self.username}"
+
+        t.append(f" {user_info}", style="dim #888888")
+        t.append(plus_text, style=plus_style)
+        t.append(" │ ? Help", style="dim #888888")
+
+        self.update(t)
+
+
+class CmusPlayerBar(Widget):
+    """Cmus-style 3-line bottom player bar with status, progress, and hints."""
 
     def compose(self) -> ComposeResult:
-        self._list_view = ListView(id="track-listview")
-        yield self._list_view
+        with Vertical(id="player-bar"):
+            yield Static("[STOPPED] Nothing playing", id="status-line")
+            yield Static("────────────────────────────────────────────────────────────────────────────", id="progress-line")
+            yield Static("[j/k] Nav  [Enter] Play  [c/Space] Pause  [b/z] Next/Prev  [+/-] Vol  [/] Search  [1-4] Views  [q] Quit", id="cmd-line")
 
-    def watch_tracks(self, tracks: list[TrackInfo]) -> None:
-        self._rebuild_list()
+    def update_state(self, state: PlayerState) -> None:
+        status_line = self.query_one("#status-line", Static)
+        progress_line = self.query_one("#progress-line", Static)
 
-    def watch_playing_index(self, old_index: int, new_index: int) -> None:
-        if self._list_view is None or old_index == new_index:
-            return
-        children = list(self._list_view.children)
-        if 0 <= old_index < len(children):
-            item = children[old_index]
-            if isinstance(item, TrackItem):
-                item.update_playing(False)
-        if 0 <= new_index < len(children):
-            item = children[new_index]
-            if isinstance(item, TrackItem):
-                item.update_playing(True)
-
-    def _rebuild_list(self) -> None:
-        if self._list_view is None:
-            return
-        self._list_view.clear()
-        for i, track in enumerate(self.tracks):
-            item = TrackItem(track, i, is_playing=(i == self.playing_index))
-            self._list_view.append(item)
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        item = event.item
-        if isinstance(item, TrackItem):
-            self.post_message(TrackSelected(item.track, item.track_index, list(self.tracks)))
-
-
-# ── Player Bar Widget ────────────────────────────────────────
-
-
-class PlayerBar(Widget):
-    """Bottom bar showing now-playing info, controls, and progress."""
-
-    DEFAULT_CSS = """
-    PlayerBar {
-        dock: bottom;
-        height: 3;
-        background: $panel;
-        border-top: solid $primary-lighten-2;
-    }
-    PlayerBar #player-bar-inner {
-        height: 3;
-        padding: 0 1;
-    }
-    PlayerBar #track-info {
-        width: 30;
-        height: 3;
-        padding: 0 1;
-    }
-    PlayerBar #track-title {
-        text-style: bold;
-        color: $text;
-    }
-    PlayerBar #track-artist {
-        color: $text-muted;
-    }
-    PlayerBar #progress-section {
-        width: 1fr;
-        height: 3;
-        align: center middle;
-    }
-    PlayerBar #controls-row {
-        height: 1;
-        align: center middle;
-    }
-    PlayerBar .control-btn {
-        width: auto;
-        padding: 0 1;
-        color: $text;
-    }
-    PlayerBar .control-btn:hover {
-        color: $primary;
-    }
-    PlayerBar .control-btn.active {
-        color: $success;
-    }
-    PlayerBar #progress-bar-row {
-        height: 1;
-        align: center middle;
-        padding: 0 1;
-    }
-    PlayerBar #time-current {
-        width: 6;
-        text-align: right;
-        color: $text-muted;
-    }
-    PlayerBar #time-total {
-        width: 6;
-        text-align: left;
-        color: $text-muted;
-    }
-    PlayerBar #progress {
-        width: 1fr;
-        padding: 0 1;
-    }
-    PlayerBar #volume-section {
-        width: 14;
-        height: 3;
-        align: right middle;
-        padding: 0 1;
-    }
-    PlayerBar #volume-label {
-        color: $text-muted;
-    }
-    """
-
-    track_title: reactive[str] = reactive("Nothing playing")
-    track_artist: reactive[str] = reactive("")
-    is_playing: reactive[bool] = reactive(False)
-    position: reactive[float] = reactive(0.0)
-    duration: reactive[float] = reactive(0.0)
-    volume: reactive[int] = reactive(70)
-    repeat_mode: reactive[str] = reactive("off")
-    shuffle_on: reactive[bool] = reactive(False)
-
-    def compose(self) -> ComposeResult:
-        with Horizontal(id="player-bar-inner"):
-            # Left: track info
-            with Vertical(id="track-info"):
-                yield Label(self.track_title, id="track-title")
-                yield Label(self.track_artist, id="track-artist")
-
-            # Center: controls + progress
-            with Vertical(id="progress-section"):
-                with Horizontal(id="controls-row"):
-                    yield Label("⇄", id="btn-shuffle", classes="control-btn")
-                    yield Label("⏮", id="btn-prev", classes="control-btn")
-                    yield Label("⏸", id="btn-play", classes="control-btn")
-                    yield Label("⏭", id="btn-next", classes="control-btn")
-                    yield Label("↻", id="btn-repeat", classes="control-btn")
-                with Horizontal(id="progress-bar-row"):
-                    yield Label("0:00", id="time-current")
-                    yield ProgressBar(total=100, show_eta=False, show_percentage=False, id="progress")
-                    yield Label("0:00", id="time-total")
-
-            # Right: volume
-            with Vertical(id="volume-section"):
-                yield Label(f"🔊 {self.volume}%", id="volume-label")
-
-    def watch_track_title(self, value: str) -> None:
-        try:
-            self.query_one("#track-title", Label).update(value)
-        except Exception:
-            pass
-
-    def watch_track_artist(self, value: str) -> None:
-        try:
-            self.query_one("#track-artist", Label).update(value)
-        except Exception:
-            pass
-
-    def watch_is_playing(self, value: bool) -> None:
-        try:
-            btn = self.query_one("#btn-play", Label)
-            btn.update("⏸" if value else "▶")
-        except Exception:
-            pass
-
-    def watch_position(self, value: float) -> None:
-        try:
-            m, s = divmod(int(value), 60)
-            self.query_one("#time-current", Label).update(f"{m}:{s:02d}")
-            if self.duration > 0:
-                pct = min(value / self.duration * 100, 100)
-                self.query_one("#progress", ProgressBar).update(progress=pct)
-        except Exception:
-            pass
-
-    def watch_duration(self, value: float) -> None:
-        try:
-            m, s = divmod(int(value), 60)
-            self.query_one("#time-total", Label).update(f"{m}:{s:02d}")
-        except Exception:
-            pass
-
-    def watch_volume(self, value: int) -> None:
-        try:
-            self.query_one("#volume-label", Label).update(f"🔊 {value}%")
-        except Exception:
-            pass
-
-    def watch_repeat_mode(self, value: str) -> None:
-        try:
-            btn = self.query_one("#btn-repeat", Label)
-            icons = {"off": "↻", "all": "↻ᴬ", "one": "↻¹"}
-            btn.update(icons.get(value, "↻"))
-            if value != "off":
-                btn.add_class("active")
+        # Status text
+        st = Text()
+        if not state.current_track:
+            st.append("[STOPPED] ", style="bold #ff5555")
+            st.append("Nothing playing", style="#888888")
+        else:
+            if state.is_playing:
+                st.append("[PLAYING] ", style="bold #00ff7f")
             else:
-                btn.remove_class("active")
-        except Exception:
-            pass
+                st.append("[PAUSED]  ", style="bold #ffaa00")
 
-    def watch_shuffle_on(self, value: bool) -> None:
-        try:
-            btn = self.query_one("#btn-shuffle", Label)
-            if value:
-                btn.add_class("active")
-            else:
-                btn.remove_class("active")
-        except Exception:
-            pass
+            # Time: mm:ss / mm:ss
+            st.append(f"{state.position_str} / {state.duration_str} ", style="bold #ffffff")
+            st.append("— ", style="#888888")
+            st.append(f"{state.current_track.artists} - {state.current_track.title} ", style="bold #00e5ff")
+            if state.current_track.album:
+                st.append(f"[{state.current_track.album}] ", style="dim #aaaaaa")
 
-    def update_from_player_state(self, state) -> None:
-        """Bulk-update from a PlayerState object."""
-        if state.current_track:
-            self.track_title = state.current_track.title
-            self.track_artist = state.current_track.artists
-        self.is_playing = state.is_playing
-        self.position = state.position
-        self.duration = state.duration
-        self.volume = state.volume
-        self.repeat_mode = state.repeat
-        self.shuffle_on = state.shuffle
+        # Controls info
+        st.append(f" [vol: {state.volume}%]", style="#888888")
+        st.append(f" [rep: {state.repeat}]", style="#888888")
+        if state.shuffle:
+            st.append(" [shuf: on]", style="#00ff7f")
+        else:
+            st.append(" [shuf: off]", style="#888888")
+
+        status_line.update(st)
+
+        # Progress bar line
+        width = max(20, self.size.width - 2) if self.size.width else 78
+        frac = state.progress
+        fill_width = int(frac * (width - 1))
+        fill_width = max(0, min(width - 1, fill_width))
+        empty_width = (width - 1) - fill_width
+
+        pt = Text()
+        pt.append("━" * fill_width, style="bold #00ff7f")
+        pt.append("●", style="bold #ffffff")
+        pt.append("─" * empty_width, style="#333333")
+        progress_line.update(pt)
+
+    def set_message(self, message: str, style: str = "bold #ffaa00") -> None:
+        cmd_line = self.query_one("#cmd-line", Static)
+        t = Text()
+        t.append(f":: {message}", style=style)
+        cmd_line.update(t)
+
+    def restore_hints(self) -> None:
+        cmd_line = self.query_one("#cmd-line", Static)
+        cmd_line.update("[j/k] Nav  [Enter] Play  [c/Space] Pause  [b/z] Next/Prev  [+/-] Vol  [/] Search  [1-4] Views  [q] Quit")
 
 
-# ── Sidebar Navigation ───────────────────────────────────────
+class HelpScreen(ModalScreen[None]):
+    """Clean ASCII help screen overlay."""
 
-
-class NavItemSelected(Message):
-    """Posted when a navigation item is selected."""
-
-    def __init__(self, item_id: str) -> None:
-        super().__init__()
-        self.item_id = item_id
-
-
-class NavItem(ListItem):
-    """Sidebar navigation item."""
-
-    DEFAULT_CSS = """
-    NavItem {
-        height: 1;
-        padding: 0 1;
-    }
-    NavItem:hover {
-        background: $primary 20%;
-    }
-    NavItem.--highlight {
-        background: $primary 40%;
-        text-style: bold;
-    }
-    """
-
-    def __init__(self, label: str, item_id: str, icon: str = "♪") -> None:
-        super().__init__()
-        self.label_text = label
-        self.item_id = item_id
-        self.icon = icon
+    BINDINGS = [
+        Binding("escape", "dismiss_modal", "Close"),
+        Binding("q", "dismiss_modal", "Close"),
+        Binding("question_mark", "dismiss_modal", "Close"),
+    ]
 
     def compose(self) -> ComposeResult:
-        yield Label(f" {self.icon}  {self.label_text}")
+        with Vertical(id="help-container"):
+            with Vertical(id="help-box"):
+                yield Label("── YMusic CLI Cheatsheet (Cmus / Vim Keys) ──", id="help-title")
 
+                yield Label("NAVIGATION (Vim)", classes="help-category")
+                yield Label("  j / Down       Move down 1 track", classes="help-entry")
+                yield Label("  k / Up         Move up 1 track", classes="help-entry")
+                yield Label("  g / Home       Jump to top of list", classes="help-entry")
+                yield Label("  G / End        Jump to bottom of list", classes="help-entry")
+                yield Label("  Ctrl+D / U     Half page down / up", classes="help-entry")
+                yield Label("  Enter          Play selected track / Open playlist", classes="help-entry")
+                yield Label("  Backspace/Esc  Back from playlist view", classes="help-entry")
 
-class Sidebar(Widget):
-    """Left sidebar with navigation."""
+                yield Label("PLAYBACK (cmus standard)", classes="help-category")
+                yield Label("  c / Space      Toggle pause / play", classes="help-entry")
+                yield Label("  b / n          Next track", classes="help-entry")
+                yield Label("  z / p          Previous track", classes="help-entry")
+                yield Label("  x              Restart track from beginning", classes="help-entry")
+                yield Label("  v              Stop playback", classes="help-entry")
+                yield Label("  + / =          Volume up (+5%)", classes="help-entry")
+                yield Label("  - / _          Volume down (-5%)", classes="help-entry")
+                yield Label("  h / Left       Seek -5 seconds", classes="help-entry")
+                yield Label("  l / Right      Seek +5 seconds", classes="help-entry")
+                yield Label("  H / L          Seek -30s / +30s", classes="help-entry")
+                yield Label("  r              Cycle repeat (off -> all -> one)", classes="help-entry")
+                yield Label("  s              Toggle shuffle", classes="help-entry")
 
-    DEFAULT_CSS = """
-    Sidebar {
-        dock: left;
-        width: 26;
-        background: $panel;
-        border-right: solid $primary-lighten-2;
-    }
-    Sidebar #sidebar-inner {
-        padding: 1 0;
-    }
-    Sidebar .nav-label {
-        padding: 0 2;
-        height: 1;
-        color: $text-muted;
-        text-style: bold;
-    }
-    Sidebar .brand-label {
-        padding: 0 2;
-        height: 1;
-        color: $primary;
-        text-style: bold;
-    }
-    Sidebar #nav-list {
-        height: auto;
-        padding: 0 0;
-    }
-    """
+                yield Label("VIEWS & ACTIONS", classes="help-category")
+                yield Label("  1              Switch to My Wave (Моя Волна)", classes="help-entry")
+                yield Label("  2              Switch to Liked Tracks (Любимые)", classes="help-entry")
+                yield Label("  3              Switch to Playlists (Плейлисты)", classes="help-entry")
+                yield Label("  4              Switch to Search Results", classes="help-entry")
+                yield Label("  a              Like current track (❤️)", classes="help-entry")
+                yield Label("  d              Dislike current track (👎 / do not recommend)", classes="help-entry")
+                yield Label("  u              Reload current view from Yandex", classes="help-entry")
+                yield Label("  /              Inline search prompt", classes="help-entry")
+                yield Label("  :              Inline command (:q, :wave, :vol, :help)", classes="help-entry")
+                yield Label("  ?              Toggle this help screen", classes="help-entry")
+                yield Label("  q              Quit YMusic CLI", classes="help-entry")
 
-    def compose(self) -> ComposeResult:
-        with Vertical(id="sidebar-inner"):
-            yield Label(" 🎵 YMusic", classes="brand-label")
-            yield Label("", classes="nav-label")  # spacer
-            yield Label(" LIBRARY", classes="nav-label")
-            lv = ListView(
-                NavItem("My Wave", "wave", "🌊"),
-                NavItem("Liked", "liked", "❤️"),
-                NavItem("Playlists", "playlists", "📁"),
-                NavItem("Search", "search", "🔍"),
-                id="nav-list",
-            )
-            yield lv
-
-    def on_list_view_selected(self, event: ListView.Selected) -> None:
-        item = event.item
-        if isinstance(item, NavItem):
-            self.post_message(NavItemSelected(item.item_id))
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
