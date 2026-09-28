@@ -1,0 +1,77 @@
+/* YMusic CLI — Main TUI Stylesheet */
+
+Screen {
+    background: $surface;
+}
+
+/* ── Main Content ── */
+#main-content {
+    background: $surface;
+    padding: 0;
+}
+
+#section-title {
+    dock: top;
+    height: 1;
+    padding: 0 2;
+    color: $text;
+    text-style: bold;
+    background: $surface-darken-1;
+}
+
+#track-list-container {
+    height: 1fr;
+}
+
+/* ── Search ── */
+#search-container {
+    height: auto;
+    dock: top;
+}
+
+#search-input {
+    margin: 0 1;
+}
+
+/* ── Login Screen ── */
+#login-container {
+    align: center middle;
+    width: 100%;
+    height: 100%;
+}
+
+#login-box {
+    width: 64;
+    height: auto;
+    border: solid $primary;
+    padding: 2 4;
+    background: $panel;
+}
+
+#login-title {
+    text-align: center;
+    text-style: bold;
+    color: $primary;
+    margin-bottom: 1;
+    width: 100%;
+}
+
+#login-help {
+    color: $text-muted;
+    margin-bottom: 1;
+}
+
+#login-btn {
+    width: 100%;
+    margin-top: 1;
+}
+
+#device-auth-btn {
+    width: 100%;
+}
+
+#login-status {
+    margin-top: 1;
+    color: $warning;
+    text-align: center;
+}

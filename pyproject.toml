@@ -1,0 +1,19 @@
+[project]
+name = "ymusic-cli"
+version = "0.1.0"
+description = "TUI player for Yandex Music"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "python-mpv>=1.0.8",
+    "rich>=15.0.0",
+    "textual>=8.2.8",
+    "yandex-music>=3.0.0",
+]
+
+[project.scripts]
+ymusic = "ymusic_cli.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.12.19,<0.13.0"]
+build-backend = "uv_build"
