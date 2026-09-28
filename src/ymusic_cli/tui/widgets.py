@@ -76,6 +76,16 @@ class TrackItem(ListItem):
             yield Label(text, classes="track-text")
             yield Label(self.track.duration_str, classes="track-duration")
 
+    def update_playing(self, is_playing: bool) -> None:
+        self.is_playing = is_playing
+        prefix = "▶" if is_playing else " "
+        num = f"{self.track_index + 1:>3}"
+        try:
+            self.query_one(".track-num", Label).update(f"{prefix}{num}")
+        except Exception:
+            pass
+        self.set_class(is_playing, "playing")
+
 
 class TrackList(Widget):
     """Scrollable list of tracks with selection support."""
@@ -103,8 +113,18 @@ class TrackList(Widget):
     def watch_tracks(self, tracks: list[TrackInfo]) -> None:
         self._rebuild_list()
 
-    def watch_playing_index(self, index: int) -> None:
-        self._rebuild_list()
+    def watch_playing_index(self, old_index: int, new_index: int) -> None:
+        if self._list_view is None or old_index == new_index:
+            return
+        children = list(self._list_view.children)
+        if 0 <= old_index < len(children):
+            item = children[old_index]
+            if isinstance(item, TrackItem):
+                item.update_playing(False)
+        if 0 <= new_index < len(children):
+            item = children[new_index]
+            if isinstance(item, TrackItem):
+                item.update_playing(True)
 
     def _rebuild_list(self) -> None:
         if self._list_view is None:

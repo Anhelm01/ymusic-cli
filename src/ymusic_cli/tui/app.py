@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import threading
+import asyncio
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual.widgets import Static, Label, Input, Button, Footer, Header, ListView, LoadingIndicator
+from textual.widgets import Label, Input, Button, Footer, Header
 from textual.containers import Horizontal, Vertical, Container
 from textual.screen import Screen
 from textual.binding import Binding
@@ -82,8 +82,12 @@ class LoginScreen(Screen):
             status.update("⚠ Please enter a token")
             return
         status.update("⏳ Logging in...")
+        self.run_worker(self._async_token_login(token))
+
+    async def _async_token_login(self, token: str) -> None:
+        status = self.query_one("#login-status", Label)
         app: YMusicApp = self.app  # type: ignore
-        success = app.api.login(token)
+        success = await asyncio.to_thread(app.api.login, token)
         if success:
             app._init_player()
             app.push_screen(MainScreen())
@@ -93,31 +97,26 @@ class LoginScreen(Screen):
     def _do_device_auth(self) -> None:
         status = self.query_one("#login-status", Label)
         status.update("⏳ Starting device auth...")
+        self.run_worker(self._async_device_auth)
+
+    async def _async_device_auth(self) -> None:
+        status = self.query_one("#login-status", Label)
         app: YMusicApp = self.app  # type: ignore
 
         def on_code(code):
             url = getattr(code, "verification_url", "https://ya.ru/device")
             user_code = getattr(code, "user_code", "???")
-            self.call_from_thread(
+            self.app.call_from_thread(
                 status.update,
                 f"Go to: {url}\nEnter code: {user_code}",
             )
 
-        def do_auth():
-            token = app.api.device_auth(on_code_callback=on_code)
-            if token:
-                self.call_from_thread(self._on_auth_success)
-            else:
-                self.call_from_thread(
-                    status.update, "❌ Device auth failed or timed out."
-                )
-
-        threading.Thread(target=do_auth, daemon=True).start()
-
-    def _on_auth_success(self) -> None:
-        app: YMusicApp = self.app  # type: ignore
-        app._init_player()
-        app.push_screen(MainScreen())
+        token = await asyncio.to_thread(app.api.device_auth, on_code_callback=on_code)
+        if token:
+            app._init_player()
+            app.push_screen(MainScreen())
+        else:
+            status.update("❌ Device auth failed or timed out.")
 
 
 # ── Main Player Screen ───────────────────────────────────────
@@ -164,12 +163,9 @@ class MainScreen(Screen):
         yield Footer()
 
     def on_mount(self) -> None:
-        # Hide search by default
         self.query_one("#search-container").display = False
-        # Set app title with username
         app = self._get_app()
         self.app.title = f"YMusic CLI — {app.api.username}"
-        # Warn if no Plus subscription
         if not app.api.has_plus:
             self.notify(
                 "⚠️ No Yandex Plus subscription detected. "
@@ -177,9 +173,7 @@ class MainScreen(Screen):
                 timeout=8,
                 severity="warning",
             )
-        # Load initial content
         self._load_liked()
-        # Start position update timer
         self.set_interval(0.5, self._update_player_bar)
 
     def _get_app(self) -> YMusicApp:
@@ -195,11 +189,13 @@ class MainScreen(Screen):
         # Update playing indicator in track list
         track_list = self.query_one("#track-list", TrackList)
         if app.player.state.current_track:
-            # Find the track in the current list by id
+            target_id = str(app.player.state.current_track.id)
+            found_idx = -1
             for i, t in enumerate(track_list.tracks):
-                if str(t.id) == str(app.player.state.current_track.id):
-                    track_list.playing_index = i
+                if str(t.id) == target_id:
+                    found_idx = i
                     break
+            track_list.playing_index = found_idx
 
     # ── Navigation ──
 
@@ -214,17 +210,16 @@ class MainScreen(Screen):
         }
         title, loader = sections.get(event.item_id, ("", lambda: None))
         self.query_one("#section-title", Label).update(title)
-        # Toggle search visibility
         self.query_one("#search-container").display = (event.item_id == "search")
         loader()
 
     def _load_liked(self) -> None:
         self.query_one("#section-title", Label).update("❤️  Liked Tracks — loading...")
-        self.run_worker(self._fetch_liked, thread=True)
+        self.run_worker(self._fetch_liked)
 
-    def _fetch_liked(self) -> None:
+    async def _fetch_liked(self) -> None:
         app = self._get_app()
-        tracks = app.api.get_liked_tracks(limit=100)
+        tracks = await asyncio.to_thread(app.api.get_liked_tracks, limit=100)
         track_list = self.query_one("#track-list", TrackList)
         track_list.tracks = tracks
         self.query_one("#section-title", Label).update(
@@ -233,11 +228,11 @@ class MainScreen(Screen):
 
     def _load_wave(self) -> None:
         self.query_one("#section-title", Label).update("🌊  My Wave — loading...")
-        self.run_worker(self._fetch_wave, thread=True)
+        self.run_worker(self._fetch_wave)
 
-    def _fetch_wave(self) -> None:
+    async def _fetch_wave(self) -> None:
         app = self._get_app()
-        tracks = app.api.start_wave()
+        tracks = await asyncio.to_thread(app.api.start_wave)
         track_list = self.query_one("#track-list", TrackList)
         track_list.tracks = tracks
         self.query_one("#section-title", Label).update(
@@ -246,39 +241,32 @@ class MainScreen(Screen):
 
     def _load_playlists(self) -> None:
         self.query_one("#section-title", Label).update("📁  Playlists — loading...")
-        self.run_worker(self._fetch_playlists_and_pick, thread=True)
+        self.run_worker(self._fetch_playlists_and_pick)
 
-    def _fetch_playlists_and_pick(self) -> None:
+    async def _fetch_playlists_and_pick(self) -> None:
         app = self._get_app()
-        playlists = app.api.get_playlists()
+        playlists = await asyncio.to_thread(app.api.get_playlists)
         if not playlists:
             track_list = self.query_one("#track-list", TrackList)
             track_list.tracks = []
             self.query_one("#section-title", Label).update("📁  No playlists found")
             return
-        # Store playlists for picker
-        self._cached_playlists = playlists
-        # Show picker modal from main thread
-        self.call_from_thread(self._show_playlist_picker)
+        self._show_playlist_picker(playlists)
 
-    def _show_playlist_picker(self) -> None:
-        playlists = getattr(self, "_cached_playlists", [])
-        if not playlists:
-            return
-
+    def _show_playlist_picker(self, playlists) -> None:
         def on_picked(selected) -> None:
             if selected is not None:
-                self.run_worker(lambda: self._load_selected_playlist(selected), thread=True)
+                self.run_worker(self._load_selected_playlist(selected))
             else:
                 self.query_one("#section-title", Label).update("📁  Playlists")
 
         self.app.push_screen(PlaylistPickerScreen(playlists), callback=on_picked)
 
-    def _load_selected_playlist(self, playlist) -> None:
+    async def _load_selected_playlist(self, playlist) -> None:
         app = self._get_app()
         name = playlist.title or "Playlist"
         self.query_one("#section-title", Label).update(f"📁  {name} — loading...")
-        tracks = app.api.get_playlist_tracks(playlist, limit=100)
+        tracks = await asyncio.to_thread(app.api.get_playlist_tracks, playlist, limit=100)
         track_list = self.query_one("#track-list", TrackList)
         track_list.tracks = tracks
         self.query_one("#section-title", Label).update(
@@ -295,11 +283,11 @@ class MainScreen(Screen):
                 self.query_one("#section-title", Label).update(
                     f"🔍  Searching: {query}..."
                 )
-                self.run_worker(lambda: self._do_search(query), thread=True)
+                self.run_worker(self._do_search(query))
 
-    def _do_search(self, query: str) -> None:
+    async def _do_search(self, query: str) -> None:
         app = self._get_app()
-        tracks = app.api.search(query, limit=30)
+        tracks = await asyncio.to_thread(app.api.search, query, limit=30)
         track_list = self.query_one("#track-list", TrackList)
         track_list.tracks = tracks
         self.query_one("#section-title", Label).update(
@@ -313,28 +301,32 @@ class MainScreen(Screen):
         app = self._get_app()
         if not app.player:
             return
-        # Send radio feedback if in wave mode
+        self.run_worker(self._play_selection(event.track, event.tracks, event.index))
+
+    async def _play_selection(self, track: TrackInfo, tracks: list[TrackInfo], index: int) -> None:
+        app = self._get_app()
         if self._is_wave_mode and app.api.radio_session:
-            app.api.radio_session.feedback_track_started(event.track)
-        app.player.set_queue(event.tracks, event.index)
+            await asyncio.to_thread(app.api.radio_session.feedback_track_started, track)
+        await asyncio.to_thread(app.player.set_queue, tracks, index)
 
     # ── Auto-load more wave tracks ──
 
-    def _on_track_end_wave(self) -> None:
+    async def _on_track_end_wave(self) -> None:
         """When wave track ends, send feedback and maybe load more."""
         app = self._get_app()
         if not self._is_wave_mode or not app.player or not app.api.radio_session:
             return
         current = app.player.state.current_track
         if current:
-            app.api.radio_session.feedback_track_finished(
-                current, app.player.state.duration
+            await asyncio.to_thread(
+                app.api.radio_session.feedback_track_finished,
+                current,
+                app.player.state.duration,
             )
-        # If near end of queue, load more wave tracks
         queue = app.player.state.queue
         idx = app.player.state.queue_index
         if idx >= len(queue) - 2:
-            more = app.api.get_more_wave_tracks()
+            more = await asyncio.to_thread(app.api.get_more_wave_tracks)
             if more:
                 app.player.state.queue.extend(more)
                 track_list = self.query_one("#track-list", TrackList)
@@ -350,20 +342,28 @@ class MainScreen(Screen):
     def action_next_track(self) -> None:
         app = self._get_app()
         if app.player:
-            # Send skip feedback for wave
-            if self._is_wave_mode and app.api.radio_session and app.player.state.current_track:
-                app.api.radio_session.feedback_skip(
-                    app.player.state.current_track, app.player.state.position
-                )
-            app.player.next_track()
-            # Auto-load more wave tracks if needed
-            if self._is_wave_mode:
-                self.run_worker(self._on_track_end_wave, thread=True)
+            self.run_worker(self._do_next_track)
+
+    async def _do_next_track(self) -> None:
+        app = self._get_app()
+        if self._is_wave_mode and app.api.radio_session and app.player.state.current_track:
+            await asyncio.to_thread(
+                app.api.radio_session.feedback_skip,
+                app.player.state.current_track,
+                app.player.state.position,
+            )
+        await asyncio.to_thread(app.player.next_track)
+        if self._is_wave_mode:
+            await self._on_track_end_wave()
 
     def action_prev_track(self) -> None:
         app = self._get_app()
         if app.player:
-            app.player.prev_track()
+            self.run_worker(self._do_prev_track)
+
+    async def _do_prev_track(self) -> None:
+        app = self._get_app()
+        await asyncio.to_thread(app.player.prev_track)
 
     def action_volume_up(self) -> None:
         app = self._get_app()
@@ -396,21 +396,28 @@ class MainScreen(Screen):
             app.player.toggle_shuffle()
 
     def action_like_track(self) -> None:
+        self.run_worker(self._do_like_track)
+
+    async def _do_like_track(self) -> None:
         app = self._get_app()
         if app.player and app.player.state.current_track:
-            if app.api.like_track(app.player.state.current_track):
+            ok = await asyncio.to_thread(app.api.like_track, app.player.state.current_track)
+            if ok:
                 self.notify("❤️ Liked!", timeout=2)
             else:
                 self.notify("Failed to like", timeout=2)
 
     def action_dislike_track(self) -> None:
+        self.run_worker(self._do_dislike_track)
+
+    async def _do_dislike_track(self) -> None:
         app = self._get_app()
         if app.player and app.player.state.current_track:
-            if app.api.dislike_track(app.player.state.current_track):
+            ok = await asyncio.to_thread(app.api.dislike_track, app.player.state.current_track)
+            if ok:
                 self.notify("👎 Disliked (won't recommend)", timeout=2)
-                # Auto-skip in wave mode
                 if self._is_wave_mode:
-                    self.action_next_track()
+                    await self._do_next_track()
             else:
                 self.notify("Failed to dislike", timeout=2)
 
@@ -459,16 +466,18 @@ class YMusicApp(App):
     def _init_player(self) -> None:
         """Initialize the player after successful login."""
         self.player = Player(self.api, volume=self.config.volume)
-        # Set up auto-next on track end
         self.player.on_end(self._on_track_end)
 
     def _on_track_end(self) -> None:
-        """Handle natural end of track."""
+        """Handle natural end of track (dispatched from mpv thread)."""
         if self.player:
-            self.player.next_track()
+            # Safely schedule next track on event loop or thread
+            asyncio.run_coroutine_threadsafe(
+                asyncio.to_thread(self.player.next_track),
+                self._loop,
+            )
 
     def on_mount(self) -> None:
-        # Try auto-login with saved token
         if self.config.is_authenticated and self.api.login():
             self._init_player()
             self.push_screen(MainScreen())
@@ -477,7 +486,6 @@ class YMusicApp(App):
 
     def on_unmount(self) -> None:
         if self.player:
-            # Save volume
             self.config.volume = self.player.state.volume
             self.config.save()
             self.player.shutdown()
