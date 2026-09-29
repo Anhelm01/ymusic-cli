@@ -17,6 +17,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Configure UTF-8 stdout on Windows to prevent cp1252 charmap encoding errors
+if sys.platform == "win32":
+    try:
+        if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 
 def main() -> None:
     root = Path(__file__).resolve().parent
@@ -26,12 +36,12 @@ def main() -> None:
     entrypoint = src_dir / "ymusic_cli" / "__main__.py"
 
     print("=" * 60)
-    print("  YMusic CLI — Standalone Executable Builder")
+    print("  YMusic CLI - Standalone Executable Builder")
     print(f"  Platform: {sys.platform} (Python {sys.version.split()[0]})")
     print("=" * 60)
 
     # 1. Clean previous builds
-    print("\n[1/5] Очистка предыдущих артефактов сборки...")
+    print("\n[1/5] Cleaning previous build artifacts...")
     if dist_dir.exists():
         shutil.rmtree(dist_dir)
     if build_dir.exists():
@@ -39,17 +49,17 @@ def main() -> None:
     dist_dir.mkdir(parents=True, exist_ok=True)
 
     # 2. Strict Token & Config Leak Check
-    print("\n[2/5] Проверка безопасности: исключение токенов и конфигов...")
+    print("\n[2/5] Security check: ensuring no tokens or user configs are bundled...")
     leak_patterns = ["config.json", "*.token", ".env*", "*token*.txt"]
     for pattern in leak_patterns:
         found = list(root.glob(pattern))
         if found:
-            print(f"  [ПРЕДУПРЕЖДЕНИЕ] Найден файл настроек: {found}")
-            print("  Убедитесь, что он добавлен в .gitignore и не передаётся в PyInstaller.")
+            print(f"  [WARNING] Found config/token file: {found}")
+            print("  Ensuring it is not passed to PyInstaller.")
 
     # 3. Assemble PyInstaller command
     exe_name = "ymusic.exe" if sys.platform == "win32" else "ymusic"
-    print(f"\n[3/5] Конфигурирование PyInstaller для {exe_name}...")
+    print(f"\n[3/5] Configuring PyInstaller for {exe_name}...")
 
     hidden_imports = [
         "ymusic_cli",
@@ -100,33 +110,32 @@ def main() -> None:
     cmd.append(str(entrypoint))
 
     # 4. Execute Build
-    print("\n[4/5] Компиляция бинарника...")
-    print(f"  Команда: {' '.join(cmd[:6])} ... {entrypoint.name}")
+    print("\n[4/5] Compiling standalone executable...")
+    print(f"  Command: {' '.join(cmd[:6])} ... {entrypoint.name}")
     res = subprocess.run(cmd, cwd=root)
     if res.returncode != 0:
-        print(f"\n[ОШИБКА] Сборка завершилась с кодом {res.returncode}")
+        print(f"\n[ERROR] PyInstaller failed with exit code {res.returncode}")
         sys.exit(res.returncode)
 
     output_exe = dist_dir / exe_name
     if not output_exe.exists():
-        print(f"\n[ОШИБКА] Скомпилированный файл не найден по пути: {output_exe}")
+        print(f"\n[ERROR] Output executable not found at: {output_exe}")
         sys.exit(1)
 
     if sys.platform != "win32":
         output_exe.chmod(0o755)
 
     size_mb = output_exe.stat().st_size / (1024 * 1024)
-    print(f"\n[5/5] Успешно скомпилировано!")
-    print(f"  Файл:    {output_exe}")
-    print(f"  Размер:  {size_mb:.2f} MB")
+    print(f"\n[5/5] Successfully compiled {exe_name}!")
+    print(f"  Path: {output_exe}")
+    print(f"  Size: {size_mb:.2f} MB")
 
     # 5. Security verification of the built artifact
-    print("\n[Проверка безопасности]")
-    # Ensure no config.json was copied into dist
+    print("\n[Security Verification]")
     dist_files = [f.name for f in dist_dir.iterdir()]
-    assert "config.json" not in dist_files, "ОШИБКА: config.json попал в dist/!"
-    print("  ✓ Токены и config.json отсутствуют в папке сборки dist/.")
-    print("  ✓ Конфигурация сохраняется строго в профиле пользователя ОС.")
+    assert "config.json" not in dist_files, "ERROR: config.json was copied into dist/!"
+    print("  [OK] No config.json or token files bundled into dist/.")
+    print("  [OK] User configuration is strictly loaded from OS user profile.")
     print("=" * 60)
 
 
