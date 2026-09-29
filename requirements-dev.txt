@@ -1,0 +1,6 @@
+# YMusic CLI — Development & Build Dependencies
+
+-r requirements.txt
+pyinstaller>=6.0.0
+pytest>=7.0.0
+ruff>=0.1.0

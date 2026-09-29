@@ -1,22 +1,70 @@
-"""MPV-based audio player backend."""
-
-from __future__ import annotations
-
+import os
+import sys
 import logging
 import shutil
 import threading
 from collections.abc import Callable
-
-import mpv
-
-from ymusic_cli.api import TrackInfo, YMusicAPI
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
 
+def _setup_mpv_environment() -> None:
+    """Prepare DLL search paths on Windows before importing mpv."""
+    if sys.platform != "win32":
+        return
+    candidates = [
+        Path(sys.executable).parent,
+        Path(__file__).parent,
+        Path.home() / "scoop" / "apps" / "mpv" / "current",
+        Path.home() / "scoop" / "shims",
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "mpv",
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "mpv",
+    ]
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        candidates.insert(0, Path(meipass))
+
+    dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll"]
+    for folder in candidates:
+        if folder.exists():
+            for dll_name in dll_names:
+                if (folder / dll_name).is_file():
+                    os.environ["PATH"] = str(folder) + os.pathsep + os.environ.get("PATH", "")
+                    if hasattr(os, "add_dll_directory"):
+                        try:
+                            os.add_dll_directory(str(folder))
+                        except Exception:
+                            pass
+                    return
+
+
+_setup_mpv_environment()
+
+try:
+    import mpv
+except (ImportError, OSError):
+    mpv = None
+
+from ymusic_cli.api import TrackInfo, YMusicAPI
+
+
 def check_mpv_available() -> bool:
-    """Check if mpv is available on the system."""
-    return shutil.which("mpv") is not None
+    """Check if mpv / libmpv is available on the system."""
+    if shutil.which("mpv") is not None:
+        return True
+    if mpv is not None:
+        return True
+    import ctypes.util
+    if sys.platform == "win32":
+        for name in ("mpv-2.dll", "mpv-1.dll", "libmpv-2.dll"):
+            if ctypes.util.find_library(name):
+                return True
+    else:
+        if ctypes.util.find_library("mpv"):
+            return True
+    return False
+
 
 
 class PlayerState:
@@ -70,6 +118,14 @@ class Player:
 
     def _init_mpv(self) -> None:
         """Initialise (or re-initialise) the mpv instance."""
+        if mpv is None:
+            instructions = (
+                "На Windows: установите mpv через scoop ('scoop install mpv') или положите mpv-2.dll рядом с ymusic.exe.\n"
+                if sys.platform == "win32"
+                else "На Linux: установите mpv/libmpv ('sudo apt install libmpv2' или 'sudo pacman -S mpv').\n"
+            )
+            raise RuntimeError(f"Библиотека mpv/libmpv не найдена.\n{instructions}")
+
         if self._mpv is not None:
             try:
                 self._mpv.terminate()

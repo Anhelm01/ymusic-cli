@@ -24,7 +24,7 @@ def test_banner():
     c.print(b)
     output = c.export_text()
     assert "anhelm" in output
-    assert "Plus Active" in output
+    assert "Plus: Active" in output
     assert "HQ 320k" in output
 
 
