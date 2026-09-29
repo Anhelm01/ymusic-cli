@@ -54,82 +54,73 @@ class TrackInfo:
 
 
 class RadioSession:
-    """Manages a Yandex Music rotor (radio/wave) session with feedback loop."""
+    """Manages a Yandex Music rotor station (radio/wave) with feedback."""
 
-    def __init__(self, client: Client, seeds: list[str] | None = None) -> None:
+    def __init__(self, client: Client, station: str = "user:onyourwave") -> None:
         self._client = client
-        self._seeds = seeds or ["user:onyourwave"]
-        self._session_id: str | None = None
+        self._station = station
         self._batch_id: str | None = None
-        self._sequence: list = []
         self._played_ids: list[str] = []
-        self._current_track_id: str | None = None
 
     def start(self) -> list[TrackInfo]:
-        """Start a new radio session and return initial tracks."""
-        session = self._client.rotor_session_new(self._seeds)
-        self._session_id = session.radio_session_id
-        self._batch_id = session.batch_id
-        self._sequence = list(session.sequence) if session.sequence else []
-        # Notify radio started
-        self._client.rotor_session_feedback_radio_started(
-            self._session_id, self._batch_id
-        )
-        return self._extract_tracks()
+        """Start radio and return initial tracks."""
+        result = self._client.rotor_station_tracks(self._station)
+        if not result:
+            return []
+        self._batch_id = result.batch_id
+        # Send radio-started feedback
+        try:
+            self._client.rotor_station_feedback_radio_started(
+                self._station, from_="cli", batch_id=self._batch_id
+            )
+        except Exception:
+            pass
+        return self._extract_tracks(result)
 
     def get_more_tracks(self) -> list[TrackInfo]:
-        """Fetch next batch of tracks from the radio."""
-        if not self._session_id:
-            return self.start()
-        more = self._client.rotor_session_tracks(
-            self._session_id, queue=self._played_ids
-        )
-        self._sequence = list(more.sequence) if more.sequence else []
-        self._batch_id = more.batch_id
-        return self._extract_tracks()
+        """Fetch next batch of tracks from the station."""
+        queue = ":".join(self._played_ids[-20:]) if self._played_ids else None
+        result = self._client.rotor_station_tracks(self._station, queue=queue)
+        if not result:
+            return []
+        self._batch_id = result.batch_id
+        return self._extract_tracks(result)
 
-    def _extract_tracks(self) -> list[TrackInfo]:
-        result = []
-        for item in self._sequence:
+    def _extract_tracks(self, result) -> list[TrackInfo]:
+        tracks = []
+        for item in (result.sequence or []):
             if item.track:
-                result.append(TrackInfo.from_ym_track(item.track))
-        return result
+                tracks.append(TrackInfo.from_ym_track(item.track))
+        return tracks
 
     def feedback_track_started(self, track: TrackInfo) -> None:
         """Send feedback that a track started playing."""
-        if not self._session_id:
-            return
-        self._current_track_id = str(track.id)
+        self._played_ids.append(str(track.id))
         try:
-            self._client.rotor_session_feedback_track_started(
-                self._session_id, str(track.id), self._batch_id
+            self._client.rotor_station_feedback_track_started(
+                self._station, str(track.id), batch_id=self._batch_id
             )
         except Exception:
             pass
 
     def feedback_track_finished(self, track: TrackInfo, duration_sec: float) -> None:
         """Send feedback that a track finished playing."""
-        if not self._session_id:
-            return
-        self._played_ids.append(str(track.id))
         try:
-            self._client.rotor_session_feedback_track_finished(
-                self._session_id, str(track.id), duration_sec, self._batch_id
+            self._client.rotor_station_feedback_track_finished(
+                self._station, str(track.id), duration_sec, batch_id=self._batch_id
             )
         except Exception:
             pass
 
     def feedback_skip(self, track: TrackInfo, played_sec: float) -> None:
         """Send feedback that a track was skipped."""
-        if not self._session_id:
-            return
-        self._played_ids.append(str(track.id))
         try:
-            self._client.rotor_session_feedback_skip(
-                self._session_id, str(track.id), played_sec, self._batch_id
+            self._client.rotor_station_feedback_skip(
+                self._station, str(track.id), played_sec, batch_id=self._batch_id
             )
         except Exception:
             pass
+
 
 
 class YMusicAPI:
@@ -303,9 +294,9 @@ class YMusicAPI:
 
     # ── My Wave (Radio) ──────────────────────────────────────
 
-    def start_wave(self, seeds: list[str] | None = None) -> list[TrackInfo]:
+    def start_wave(self, station: str = "user:onyourwave") -> list[TrackInfo]:
         """Start a 'My Wave' radio session and return initial tracks."""
-        self._radio_session = RadioSession(self.client, seeds)
+        self._radio_session = RadioSession(self.client, station)
         return self._radio_session.start()
 
     def get_more_wave_tracks(self) -> list[TrackInfo]:
