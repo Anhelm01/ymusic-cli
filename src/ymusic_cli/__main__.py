@@ -10,16 +10,16 @@ from pathlib import Path
 def print_cli_help() -> None:
     """Print command-line usage information."""
     from rich.console import Console
-    from rich.table import Table
 
     console = Console()
-    console.print("[bold]ymusic[/bold] — Console player for Yandex Music\n")
+    console.print("[bold]ymusic[/bold] — Console player for Yandex Music with ASCII visuals & tabs\n")
     console.print("[bold cyan]Usage:[/bold cyan]")
     console.print("  ymusic                     Launch interactive player shell")
     console.print("  ymusic wave                Launch and start My Wave radio immediately")
     console.print("  ymusic liked               Launch and browse liked tracks")
     console.print("  ymusic play <query/number> Launch and play track or search query")
     console.print("  ymusic search <query>      Launch and search for tracks")
+    console.print("  ymusic vis                 Launch interactive ASCII spectrum visualizer")
     console.print("  ymusic status              Show account info and exit")
     console.print("  ymusic auth [token]        Authenticate with Yandex Music account")
     console.print("  ymusic --help, -h          Show this help message\n")
@@ -73,7 +73,7 @@ def main() -> None:
     initial_cmd = None
     if args:
         subcmd = args[0].lower()
-        if subcmd in ("wave", "liked", "playlists"):
+        if subcmd in ("wave", "liked", "playlists", "vis", "lyrics"):
             initial_cmd = subcmd
         elif subcmd in ("play", "search") and len(args) > 1:
             initial_cmd = f"{subcmd} {' '.join(args[1:])}"

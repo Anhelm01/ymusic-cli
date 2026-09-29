@@ -309,6 +309,24 @@ class YMusicAPI:
         except Exception:
             return False
 
+    # ── Lyrics ───────────────────────────────────────────────
+
+    def get_track_lyrics(self, track_info: TrackInfo) -> str | None:
+        """Fetch lyrics for a track if available."""
+        try:
+            track = track_info._raw
+            if track is None:
+                tracks = self.client.tracks([str(track_info.id)])
+                if not tracks:
+                    return None
+                track = tracks[0]
+            supp = track.get_supplement()
+            if supp and supp.lyrics:
+                return supp.lyrics.full_lyrics or supp.lyrics.text
+            return None
+        except Exception:
+            return None
+
     # ── My Wave (Radio) ──────────────────────────────────────
 
     def start_wave(self, station: str = "user:onyourwave") -> list[TrackInfo]:

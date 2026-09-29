@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -18,16 +19,27 @@ from prompt_toolkit.patch_stdout import patch_stdout
 from ymusic_cli.config import Config
 from ymusic_cli.api import YMusicAPI, TrackInfo
 from ymusic_cli.player import Player, check_mpv_available
+from ymusic_cli.visualizer import (
+    render_banner,
+    render_tabs,
+    render_now_card,
+    run_visualizer,
+)
 
 console = Console(highlight=False)
 
 COMMANDS_HELP = {
-    "liked":      "Show liked tracks",
-    "wave":       "Start My Wave radio",
-    "play N":     "Play track number N from the current list",
-    "search Q":   "Search for tracks",
-    "playlists":  "List your playlists",
+    "tab <1-6>":  "Switch tab (1:Wave, 2:Liked, 3:Playlists, 4:Search, 5:Queue, 6:Lyrics)",
+    "vis":        "Interactive ASCII audio spectrum visualizer (Esc/q to exit)",
+    "lyrics":     "Show lyrics of the currently playing track",
+    "wave":       "Start My Wave radio (Tab 1)",
+    "liked":      "Show liked tracks (Tab 2)",
+    "playlists":  "List your playlists (Tab 3)",
     "open N":     "Open playlist number N",
+    "search Q":   "Search for tracks (Tab 4)",
+    "play N":     "Play track number N from the current list",
+    "now":        "Show Now Playing card with animated cassette art",
+    "queue":      "Show play queue (Tab 5)",
     "next / n":   "Next track",
     "prev / p":   "Previous track",
     "pause":      "Toggle pause",
@@ -39,14 +51,14 @@ COMMANDS_HELP = {
     "shuffle":    "Toggle shuffle",
     "like":       "Like current track",
     "dislike":    "Dislike current track (won't recommend)",
-    "now":        "Show now playing",
-    "queue":      "Show play queue",
     "status":     "Show account info",
     "help":       "Show this help",
     "quit / q":   "Exit",
 }
 
 _BASE_COMPLETIONS = [
+    "tab", "t1", "t2", "t3", "t4", "t5", "t6",
+    "vis", "visualizer", "lyrics",
     "liked", "wave", "play", "search", "playlists", "open",
     "next", "prev", "pause", "stop", "seek", "vol", "volume",
     "repeat", "shuffle", "like", "dislike", "now", "queue",
@@ -104,26 +116,7 @@ def print_track_table(tracks: list[TrackInfo], title: str, playing_id: str | Non
 
 def print_now_playing(player: Player) -> None:
     """Print current playback status."""
-    s = player.state
-    if not s.current_track:
-        console.print("[dim]Nothing playing.[/dim]")
-        return
-
-    t = s.current_track
-    status = "[bold green]▶ PLAYING[/bold green]" if s.is_playing else "[bold yellow]❚❚ PAUSED[/bold yellow]"
-
-    # Progress bar
-    width = 40
-    filled = int(s.progress * width)
-    bar = "━" * filled + "●" + "─" * (width - filled)
-
-    console.print()
-    console.print(f"  {status}  [bold]{t.artists}[/bold] — [bold]{t.title}[/bold]")
-    if t.album:
-        console.print(f"           [dim]{t.album}[/dim]")
-    console.print(f"  [cyan]{bar}[/cyan]  {s.position_str} / {s.duration_str}")
-    console.print(f"  vol: {s.volume}%  repeat: {s.repeat}  shuffle: {'on' if s.shuffle else 'off'}")
-    console.print()
+    console.print(render_now_card(player))
 
 
 class YMusicShell:
@@ -136,6 +129,7 @@ class YMusicShell:
         self.current_tracks: list[TrackInfo] = []
         self.cached_playlists: list[Any] = []
         self.is_wave_mode: bool = False
+        self.active_tab: int = 1
         self._completer = WordCompleter(COMPLETIONS, ignore_case=True)
         self._status_thread: threading.Thread | None = None
         self._running = True
@@ -160,9 +154,14 @@ class YMusicShell:
         self.player = Player(self.api, volume=self.config.volume)
         self.player.on_end(self._on_track_end)
 
-        plus = "[green]Plus[/green]" if self.api.has_plus else "[red]No Plus[/red]"
-        console.print(f"[bold]ymusic[/bold] v0.2.0 — {self.api.username} ({plus})")
-        console.print("[dim]Type 'help' for commands, 'liked' to browse tracks, 'wave' for radio.[/dim]")
+        console.print(
+            render_banner(
+                username=self.api.username,
+                has_plus=self.api.has_plus,
+                quality=self.config.quality,
+            )
+        )
+        console.print(render_tabs(self.active_tab))
         console.print()
 
         if initial_command:
@@ -178,6 +177,14 @@ class YMusicShell:
         finally:
             self._shutdown()
 
+    def _bottom_toolbar(self) -> str:
+        s = self.player.state if self.player else None
+        if s and s.current_track:
+            icon = "▶" if s.is_playing else "❚❚"
+            t = s.current_track
+            return f" {icon} {t.artists} - {t.title}  [{s.position_str}/{s.duration_str}]  Vol: {s.volume}%  |  Tab [{self.active_tab}]  |  'vis' Visualizer  'lyrics' Lyrics"
+        return f" ■ Idle  |  Tab [{self.active_tab}]  |  'wave', 'liked', 'search <query>', 'vis', 'tab <1-6>', 'help'"
+
     def _loop(self) -> None:
         """Main REPL loop with thread-safe stdout patching."""
         while self._running:
@@ -187,6 +194,7 @@ class YMusicShell:
                         "ymusic> ",
                         completer=self._completer,
                         complete_while_typing=False,
+                        bottom_toolbar=self._bottom_toolbar,
                     )
             except (KeyboardInterrupt, EOFError):
                 break
@@ -212,6 +220,16 @@ class YMusicShell:
             self._running = False
         elif cmd == "help":
             self._cmd_help()
+        elif cmd in ("vis", "visualizer"):
+            self._cmd_vis()
+        elif cmd in ("lyrics", "text", "lyric"):
+            self._cmd_lyrics()
+        elif cmd in ("tab", "t"):
+            self._cmd_tab(arg)
+        elif cmd in ("t1", "t2", "t3", "t4", "t5", "t6"):
+            self._cmd_tab(cmd[1:])
+        elif cmd in ("tab1", "tab2", "tab3", "tab4", "tab5", "tab6"):
+            self._cmd_tab(cmd[3:])
         elif cmd == "liked":
             self._cmd_liked()
         elif cmd == "wave":
@@ -252,6 +270,8 @@ class YMusicShell:
             self._cmd_status()
         elif cmd == "clear":
             console.clear()
+            console.print(render_tabs(self.active_tab))
+            console.print()
         else:
             # Try as number — play track N
             try:
@@ -262,7 +282,89 @@ class YMusicShell:
 
     # ── Commands ─────────────────────────────────────────────
 
+    def _cmd_tab(self, arg: str) -> None:
+        """Switch active tab."""
+        arg = arg.strip()
+        if not arg:
+            console.print(render_tabs(self.active_tab))
+            return
+        try:
+            tab_id = int(arg)
+        except ValueError:
+            arg_lower = arg.lower()
+            mapping = {
+                "wave": 1, "волна": 1,
+                "liked": 2, "лайки": 2, "избранное": 2,
+                "playlists": 3, "playlist": 3, "плейлисты": 3,
+                "search": 4, "поиск": 4,
+                "queue": 5, "очередь": 5,
+                "lyrics": 6, "текст": 6, "text": 6, "lyric": 6,
+            }
+            tab_id = mapping.get(arg_lower, 0)
+
+        if tab_id < 1 or tab_id > 6:
+            console.print("[red]Invalid tab. Available tabs: 1-6 (wave, liked, playlists, search, queue, lyrics)[/red]")
+            return
+
+        self.active_tab = tab_id
+        if tab_id == 1:
+            self._cmd_wave()
+        elif tab_id == 2:
+            self._cmd_liked()
+        elif tab_id == 3:
+            self._cmd_playlists()
+        elif tab_id == 4:
+            console.print(render_tabs(self.active_tab))
+            console.print("[dim]Use 'search <query>' to search for tracks, artists, or albums.[/dim]")
+        elif tab_id == 5:
+            self._cmd_queue()
+        elif tab_id == 6:
+            self._cmd_lyrics()
+
+    def _cmd_vis(self) -> None:
+        """Launch interactive ASCII spectrum visualizer."""
+        if not self.player:
+            return
+        run_visualizer(self.player, self.api, console)
+        console.print(render_tabs(self.active_tab))
+        console.print()
+
+    def _cmd_lyrics(self) -> None:
+        """Display lyrics for the current track."""
+        self.active_tab = 6
+        if not self.player or not self.player.state.current_track:
+            console.print(render_tabs(self.active_tab))
+            console.print("[dim]Nothing playing. Start a track to view lyrics.[/dim]")
+            return
+
+        t = self.player.state.current_track
+        console.print("[dim]Fetching lyrics...[/dim]")
+        lyrics = self.api.get_track_lyrics(t)
+
+        console.print(render_tabs(self.active_tab))
+        if not lyrics:
+            console.print(
+                Panel(
+                    f"[yellow]No lyrics found for [bold]{t.title}[/bold] by [cyan]{t.artists}[/cyan].[/yellow]",
+                    title="🎤 Track Lyrics",
+                    border_style="yellow",
+                    padding=(1, 2),
+                )
+            )
+            return
+
+        console.print(
+            Panel(
+                str(lyrics).strip(),
+                title=f"🎤 [bold white]{t.title}[/bold white] — [bold cyan]{t.artists}[/bold cyan]",
+                subtitle="[dim]Yandex Music Lyrics[/dim]",
+                border_style="magenta",
+                padding=(1, 3),
+            )
+        )
+
     def _cmd_help(self) -> None:
+        console.print(render_tabs(self.active_tab))
         table = Table(title="Commands", border_style="dim", show_header=False, padding=(0, 2))
         table.add_column("Command", style="bold green")
         table.add_column("Description")
@@ -271,6 +373,8 @@ class YMusicShell:
         console.print(table)
 
     def _cmd_liked(self) -> None:
+        self.active_tab = 2
+        console.print(render_tabs(self.active_tab))
         console.print("[dim]Loading liked tracks...[/dim]")
         tracks = self.api.get_liked_tracks(limit=100)
         self.current_tracks = tracks
@@ -279,6 +383,8 @@ class YMusicShell:
         print_track_table(tracks, f"❤️  Liked Tracks ({len(tracks)})", playing_id)
 
     def _cmd_wave(self) -> None:
+        self.active_tab = 1
+        console.print(render_tabs(self.active_tab))
         console.print("[dim]Starting My Wave...[/dim]")
         tracks = self.api.start_wave()
         self.current_tracks = tracks
@@ -339,6 +445,8 @@ class YMusicShell:
         if not q:
             console.print("[dim]Usage: search <query>[/dim]")
             return
+        self.active_tab = 4
+        console.print(render_tabs(self.active_tab))
         console.print(f"[dim]Searching '{q}'...[/dim]")
         tracks = self.api.search(q, limit=30)
         self.current_tracks = tracks
@@ -350,6 +458,8 @@ class YMusicShell:
         print_track_table(tracks, f"🔍 Search: '{q}' ({len(tracks)})", playing_id)
 
     def _cmd_playlists(self) -> None:
+        self.active_tab = 3
+        console.print(render_tabs(self.active_tab))
         console.print("[dim]Loading playlists...[/dim]")
         playlists = self.api.get_playlists()
         self.cached_playlists = playlists
@@ -387,6 +497,8 @@ class YMusicShell:
 
         pl = self.cached_playlists[n - 1]
         name = pl.title or "Playlist"
+        self.active_tab = 3
+        console.print(render_tabs(self.active_tab))
         console.print(f"[dim]Loading '{name}'...[/dim]")
         tracks = self.api.get_playlist_tracks(pl, limit=100)
         self.current_tracks = tracks
@@ -507,9 +619,11 @@ class YMusicShell:
 
     def _cmd_now(self) -> None:
         if self.player:
-            print_now_playing(self.player)
+            console.print(render_now_card(self.player, self.active_tab))
 
     def _cmd_queue(self) -> None:
+        self.active_tab = 5
+        console.print(render_tabs(self.active_tab))
         if not self.player or not self.player.state.queue:
             console.print("[dim]Queue is empty.[/dim]")
             return
