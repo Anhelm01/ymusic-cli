@@ -1,50 +1,54 @@
 # YMusic CLI
 
-**YMusic CLI** — современный, быстрый и легковесный консольный плеер для **Яндекс Музыки** с ASCII-интерфейсом, динамическим спектроанализатором, кассетной анимацией, скользящим окном очереди и автоматической авторизацией через браузер.
+<p align="left">
+  <strong>English</strong> | <strong><a href="README_RU.md">Русский</a></strong>
+</p>
 
-Кроссплатформенный: полноценная поддержка **Linux** и **Windows** (10 / 11).
+**YMusic CLI** is a modern, fast, and lightweight console music player for **Yandex Music** featuring an ASCII interface, real-time dynamic spectrum visualizer, retro cassette animation, sliding window queue, and automated browser authentication.
 
----
-
-## Основные возможности
-
-- **Мгновенная навигация цифрами (1–6)**:
-  - `1` / `wave`: **Моя Волна** — бесконечный персональный поток музыки с автоподгрузкой.
-  - `2` / `liked`: **Избранное** — ваша библиотека лайкнутых треков.
-  - `3` / `playlists`: **Плейлисты** — просмотр личных и рекомендованных плейлистов (`3 <N>` для выбора).
-  - `4` / `search`: **Поиск** — мгновенный поиск треков, исполнителей и альбомов (`4 <запрос>`).
-  - `5` / `queue`: **Очередь** — компактное окно текущего плейлиста.
-  - `6` / `lyrics`: **Текст песни** — отображение слов играющего трека.
-- **Интеллектуальная компактная очередь (3 трека)**:
-  - `<< Предыдущий`
-  - `>> Играет`
-  - `>> Следующий`
-  - Для просмотра полного списка доступен флаг `all` (например: `liked all`, `5 all`).
-- **Интерактивный спектроанализатор (`vis`)**:
-  - Полноэкранный ASCII-визуализатор спектра с физикой гравитации/затухания столбиков.
-  - Управление воспроизведением прямо из визуализатора в реальном времени.
-- **Карточка трека с кассетой (`now`)**:
-  - Анимированная ретро-кассета, точный таймлайн воспроизведения и метаданные.
-- **Безопасная авто-авторизация (`auth`)**:
-  - Быстрый вход по технологии **Device Auth**: плеер сам генерирует код, копирует в буфер и открывает `https://ya.ru/device`. Никаких ручных поисков токена в DevTools!
-  - Токены хранятся строго в защищенном профиле пользователя ОС и никогда не утекают в папку сборки или репозиторий.
-- **Чистый терминал**:
-  - Автоматическая очистка экрана при переключении разделов без простыней логов.
+Cross-platform: first-class support for **Linux** and **Windows** (10 / 11).
 
 ---
 
-## Требования
+## Key Features
 
-1. **Аудио-движок mpv**: YMusic CLI использует `libmpv` для воспроизведения аудио высокого качества с минимальным потреблением ресурсов.
-2. *(Опционально для запуска из исходников)*: Python **3.10+** и менеджер пакетов (`uv` или `pip`).
+- **Instant Number Navigation (1–6)**:
+  - `1` / `wave`: **My Wave** — infinite personalized algorithmic radio stream with automatic background track prefetching.
+  - `2` / `liked`: **Favorites** — your personal library of liked tracks.
+  - `3` / `playlists`: **Playlists** — browse your personal and editorial playlists (`3 <N>` to select).
+  - `4` / `search`: **Search** — instant search across tracks, artists, and albums (`4 <query>`).
+  - `5` / `queue`: **Queue** — compact sliding window view of the active playlist.
+  - `6` / `lyrics`: **Lyrics** — view synchronized or plain text lyrics for the currently playing track.
+- **Intelligent 3-Track Sliding Window Queue**:
+  - `<< Previous`
+  - `>> Playing`
+  - `>> Next`
+  - To inspect the complete playlist list at any time, pass the `all` flag (e.g. `liked all`, `5 all`).
+- **Interactive Spectrum Visualizer (`vis`)**:
+  - Fullscreen terminal ASCII spectrum analyzer with column gravity and decay physics.
+  - Real-time playback control hotkeys directly inside the visualizer without leaving the view.
+- **Retro Cassette Track Card (`now`)**:
+  - Animated retro cassette with spinning reels, precise playback timeline, and track metadata.
+- **Zero-Friction Device Auth (`auth`)**:
+  - Hassle-free login powered by **Device Auth**: the player automatically generates a code, copies it to your clipboard, and launches `https://ya.ru/device` in your default browser. No manual token inspection in DevTools!
+  - Tokens and settings are stored strictly in the operating system's protected user profile directory with restrictive permissions and are never bundled into release artifacts or repositories.
+- **Clean Terminal UI**:
+  - Automatic screen management on section switching with zero log spam.
 
 ---
 
-## Пошаговое руководство для Linux
+## Requirements
 
-### Шаг 1. Установка системных зависимостей (mpv)
+1. **Audio Backend (mpv / libmpv)**: YMusic CLI uses `libmpv` for high-quality, low-latency audio playback with minimal resource usage.
+2. *(Optional, only when running from source)*: Python **3.10+** and package manager (`uv` or `pip`).
 
-Установите `mpv` через пакетный менеджер вашего дистрибутива:
+---
+
+## Step-by-Step Guide for Linux
+
+### Step 1. Install System Audio Backend (mpv)
+
+Install `mpv` and development libraries using your distribution's package manager:
 
 - **Ubuntu / Debian / Linux Mint**:
   ```bash
@@ -66,42 +70,43 @@
 
 ---
 
-### Шаг 2. Запуск плеера на Linux
+### Step 2. Launching on Linux
 
-#### Вариант А: Запуск готового исполняемого файла (без установки Python)
+#### Option A: Run Pre-built Standalone Binary (No Python required)
 
-1. Перейдите в папку с релизным бинарником (или скачайте `ymusic` из релизов):
+1. Download the release package (`ymusic-v0.2.0-linux-x64.tar.gz`) from GitHub Releases or locate `dist/linux/ymusic`:
    ```bash
-   cd dist/
+   tar -xzf ymusic-v0.2.0-linux-x64.tar.gz
+   cd ymusic-v0.2.0-linux-x64
    ```
-2. Выдайте права на исполнение:
+2. Grant execution permissions:
    ```bash
    chmod +x ymusic
    ```
-3. *(Рекомендуется)* Добавьте бинарник в системный путь, чтобы запускать команду `ymusic` из любой директории:
+3. *(Recommended)* Install into your user binary path to run `ymusic` anywhere:
    ```bash
    mkdir -p ~/.local/bin
    cp ymusic ~/.local/bin/
    ```
-   *(Убедитесь, что `~/.local/bin` есть в вашей переменной `$PATH`)*.
+   *(Ensure `~/.local/bin` is in your `$PATH`)*.
 
-4. Запустите плеер:
+4. Start the player:
    ```bash
    ymusic
    ```
 
-#### Вариант Б: Запуск из исходников (через uv или venv)
+#### Option B: Run from Source (via uv or venv)
 
-- **Быстрый способ через uv** (рекомендуется):
+- **Using uv** (recommended):
   ```bash
-  # Установка зависимостей в виртуальное окружение:
+  # Install dependencies into virtual environment:
   uv sync
 
-  # Запуск плеера:
+  # Start the player:
   uv run ymusic
   ```
 
-- **Стандартный способ через Python venv и pip**:
+- **Using standard Python venv and pip**:
   ```bash
   python3 -m venv .venv
   source .venv/bin/activate
@@ -111,201 +116,202 @@
 
 ---
 
-## Пошаговое руководство для Windows
+## Step-by-Step Guide for Windows
 
-### Шаг 1. Установка аудио-бэкенда (mpv)
+### Step 1. Install Audio Backend (mpv)
 
-Плееру необходима библиотека `libmpv` / исполняемый файл `mpv.exe` в системном пути:
+The player requires `libmpv` / `mpv.exe` in your system `PATH`:
 
-- **Способ 1 (через winget — встроен в Windows 10/11)**:
-  В терминале PowerShell от имени администратора или пользователя:
+- **Method 1 (via winget — built into Windows 10/11)**:
+  In PowerShell:
   ```powershell
   winget install mpv.net
-  # или
+  # or
   winget install mpv.mpv
   ```
-- **Способ 2 (через Scoop)**:
+- **Method 2 (via Scoop)**:
   ```powershell
   scoop install mpv
   ```
-- **Способ 3 (через Chocolatey)**:
+- **Method 3 (via Chocolatey)**:
   ```powershell
   choco install mpv
   ```
-- **Способ 4 (вручную)**:
-  1. Скачайте архив mpv с [официального сайта SourceForge / GitHub](https://sourceforge.net/projects/mpv-player-windows/files/).
-  2. Распакуйте `libmpv-2.dll` (или `mpv.exe`) в папку с `ymusic.exe` или добавьте папку с mpv в системную переменную `PATH`.
+- **Method 4 (Manual download)**:
+  1. Download the mpv package from [SourceForge / GitHub](https://sourceforge.net/projects/mpv-player-windows/files/).
+  2. Extract `libmpv-2.dll` (or `mpv.exe`) into the same directory as `ymusic.exe`, or add its folder to your system `PATH`.
 
 > [!TIP]
-> **Рекомендуемый терминал для Windows**: используйте современный **Windows Terminal** (доступен в Microsoft Store). Он корректно поддерживает ANSI-цвета, UTF-8 и шрифты Nerd Fonts / Cascadia Code для корректной отрисовки кассеты и спектра.
+> **Recommended Windows Terminal**: Use the modern **Windows Terminal** (available free from the Microsoft Store). It provides full ANSI 24-bit color support, UTF-8 rendering, and compatibility with Nerd Fonts / Cascadia Code for crisp cassette and equalizer art.
 
 ---
 
-### Шаг 2. Запуск плеера на Windows
+### Step 2. Launching on Windows
 
-#### Вариант А: Запуск готового `ymusic.exe`
+#### Option A: Run Pre-built Standalone `ymusic.exe`
 
-1. Откройте **Windows Terminal** (PowerShell или командную строку).
-2. Перейдите в папку с программой и запустите:
+1. Download and extract `ymusic-v0.2.0-windows-x64.zip`.
+2. Open **Windows Terminal** (PowerShell or Command Prompt).
+3. Run the executable:
    ```powershell
-   .\dist\ymusic.exe
+   .\ymusic.exe
    ```
-   *(Или добавьте папку с `ymusic.exe` в системный `PATH` для запуска командой `ymusic` из любого окна)*.
+   *(Or double-click `run.bat` included in the zip package)*.
 
-#### Вариант Б: Запуск из исходников в Windows
+#### Option B: Run from Source on Windows
 
 ```powershell
-# Создание и активация виртуального окружения
+# Create and activate virtual environment
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 
-# Установка зависимостей
+# Install requirements
 pip install -r requirements.txt
 
-# Запуск интерактивного шелла
+# Run interactive CLI
 python -m ymusic_cli
 ```
 
 ---
 
-## Авторизация (Device Auth)
+## Authentication (Device Auth)
 
-При первом запуске плеер автоматически предложит войти в аккаунт Яндекс:
+On first run, the player automatically prompts you to log into your Yandex account:
 
-1. Запустите команду авторизации:
+1. Run the auth command:
    ```bash
    ymusic auth
    ```
-2. Плеер сгенерирует уникальный код устройства (например, `ABCD-1234`), **автоматически скопирует его в буфер обмена** и откроет страницу подтверждения:
+2. The player generates a one-time device code (e.g. `ABCD-1234`), **automatically copies it to your clipboard**, and opens the verification page:
    ```
    https://ya.ru/device
    ```
-3. В браузере нажмите **Ctrl+V** (Вставить), подтвердите подключение устройства.
-4. Плеер автоматически перехватит токен, надежно сохранит его в конфигурации и выведет имя пользователя с подтверждением активной подписки Яндекс Плюс.
+3. In your browser, press **Ctrl+V** (Paste) and authorize the device.
+4. The CLI automatically intercepts the token, stores it securely in your configuration, and displays your account username along with Yandex Plus subscription status.
 
-### Альтернативная авторизация:
-Если вы уже знаете свой OAuth-токен:
+### Alternative Authentication Methods:
+If you already possess an OAuth token:
 ```bash
-ymusic auth <ВАШ_ТОКЕН>
+ymusic auth <YOUR_TOKEN>
 ```
-Или передайте его через переменную окружения:
-- **Linux**: `export YANDEX_MUSIC_TOKEN="ваш_токен"`
-- **Windows (PowerShell)**: `$env:YANDEX_MUSIC_TOKEN="ваш_токен"`
+Or pass it via environment variable:
+- **Linux**: `export YANDEX_MUSIC_TOKEN="your_token"`
+- **Windows (PowerShell)**: `$env:YANDEX_MUSIC_TOKEN="your_token"`
 
 ---
 
-## Команды и горячие клавиши
+## Commands & Hotkeys Reference
 
-### Быстрый запуск из терминала:
-| Команда | Описание |
+### Terminal Quick Launch Commands:
+| Command | Description |
 |:---|:---|
-| `ymusic` | Запуск интерактивного шелла |
-| `ymusic 1` или `ymusic wave` | Запустить «Мою Волну» сразу при старте |
-| `ymusic 2` или `ymusic liked` | Открыть избранные треки |
-| `ymusic play <название>` | Найти и сразу воспроизвести трек |
-| `ymusic search <запрос>` | Выполнить поиск по библиотеке |
-| `ymusic vis` | Сразу открыть интерактивный визуализатор |
-| `ymusic status` | Показать статус аккаунта и выйти |
-| `ymusic update` / `auth` | Принудительно обновить токен через браузер |
-| `ymusic --version` / `-v` | Показать версию программы |
-| `ymusic --help` / `-h` | Показать справку по параметрам CLI |
+| `ymusic` | Start interactive terminal shell |
+| `ymusic 1` or `ymusic wave` | Launch "My Wave" immediately on startup |
+| `ymusic 2` or `ymusic liked` | Open favorites / liked tracks |
+| `ymusic play <query>` | Search and immediately play first matching track |
+| `ymusic search <query>` | Search library for tracks, artists, and albums |
+| `ymusic vis` | Launch directly into interactive spectrum visualizer |
+| `ymusic status` | Check account info and Plus subscription status |
+| `ymusic update` / `auth` | Force re-authentication via browser |
+| `ymusic --version` / `-v` | Display version information |
+| `ymusic --help` / `-h` | Show CLI flags and options help |
 
-### Управление внутри интерактивного шелла:
+### Interactive Shell Controls:
 
-#### Разделы (ввод одной цифры):
-- `1` — **Моя Волна** (бесконечное персональное радио)
-- `2` — **Лайки** (ваши избранные треки, компактно 3 штуки)
-- `2 all` — Показать полный список лайков
-- `3` — **Плейлисты** (список ваших плейлистов)
-- `3 <номер>` — Открыть и загрузить плейлист под номером N
-- `4 <запрос>` — **Поиск** по Яндекс Музыке
-- `5` — **Очередь** (текущие 3 трека: Предыдущий / Играет / Следующий)
-- `5 all` — Показать всю текущую очередь
-- `6` — **Текст песни** (слова текущего трека)
+#### Categories (Single digit input):
+- `1` — **My Wave** (infinite personalized radio stream)
+- `2` — **Liked** (compact 3-track sliding window of favorites)
+- `2 all` — Display full list of liked tracks
+- `3` — **Playlists** (browse personal and editorial playlists)
+- `3 <number>` — Load and start playlist number N
+- `4 <query>` — **Search** Yandex Music
+- `5` — **Queue** (current 3 tracks: Previous / Playing / Next)
+- `5 all` — Display entire active playback queue
+- `6` — **Lyrics** (synchronized or plain text lyrics)
 
-#### Экраны визуализации:
-- `vis` — Полноэкранный ASCII-спектрограф с анализатором частот.
-  - Горячие клавиши в визуализаторе:
-    - `Пробел` — Пауза / Возобновить
-    - `n` / `p` — Следующий / Предыдущий трек
-    - `+` / `-` — Громкость выше / ниже
-    - `l` — Поставить лайк
-    - `s` — Перемешать треки
-    - `q` или `Esc` — Вернуться в консоль
-- `now` — Карточка играющего трека с ретро-кассетой и таймлайном.
+#### Visual Screens:
+- `vis` — Fullscreen ASCII spectrum analyzer with column decay physics.
+  - **Visualizer Hotkeys**:
+    - `Space` — Pause / Resume playback
+    - `n` / `p` — Next / Previous track
+    - `+` / `-` — Volume up / down
+    - `l` — Toggle Like on current track
+    - `s` — Shuffle queue
+    - `q` or `Esc` — Exit visualizer back to shell
+- `now` — Now Playing card with animated cassette and audio timeline.
 
-#### Воспроизведение:
-- `play <номер>` — Воспроизвести трек по его номеру в текущем списке
-- `pause` — Приостановить / возобновить
-- `stop` — Полная остановка
-- `n` / `next` — Следующий трек (в Моей Волне треки подгружаются бесконечно)
-- `p` / `prev` — Предыдущий трек
-- `seek +/-N` — Перемотка на N секунд (например, `seek +30` или `seek -15`)
-- `vol <0-100>` — Установить уровень громкости (например, `vol 80`)
-- `vol +/-N` — Изменить громкость на шаг (например, `vol +5` или `vol -10`)
-- `repeat` — Переключение режима повтора: `off` -> `all` -> `one`
-- `shuffle` — Перемешать очередь воспроизведения
-- `like` / `dislike` — Поставить отметку «Нравится» [+] или «Не нравится» [-]
+#### Playback Commands:
+- `play <number>` — Play track by index from current list
+- `pause` — Pause or resume playback
+- `stop` — Stop playback completely
+- `n` / `next` — Skip to next track (in My Wave, streams infinitely)
+- `p` / `prev` — Go back to previous track
+- `seek +/-N` — Seek by N seconds (e.g. `seek +30` or `seek -15`)
+- `vol <0-100>` — Set volume percentage (e.g. `vol 80`)
+- `vol +/-N` — Adjust volume by delta (e.g. `vol +5` or `vol -10`)
+- `repeat` — Cycle repeat mode: `off` -> `all` -> `one`
+- `shuffle` — Shuffle current queue
+- `like` / `dislike` — Rate track: Like [+] or Dislike [-]
 
-#### Системные команды:
-- `clear` / `cls` — Очистить экран
-- `status` — Проверить статус подписки Яндекс Плюс
-- `update` / `auth` — Принудительно обновить токен авторизации через браузер
-- `help` — Показать подсказку со всеми доступными командами
-- `q` / `quit` / `exit` — Выйти из плеера
+#### Shell System Commands:
+- `clear` / `cls` — Clear terminal screen
+- `status` — Show user profile & Yandex Plus status
+- `update` / `auth` — Force browser authentication update
+- `help` — Print command reference
+- `q` / `quit` / `exit` — Exit the player
 
 ---
 
-## Сборка автономного бинарника своими руками
+## Building Standalone Executables
 
-Вы можете скомпилировать независимый исполняемый файл для вашей платформы скриптом `build.py`:
+You can compile a standalone, single-file binary for your platform using `build.py`:
 
 ```bash
-# 1. Установите зависимости сборщика
+# 1. Install build requirements
 pip install -r requirements-dev.txt
 
-# 2. Запустите скрипт компиляции
+# 2. Run compilation script
 python build.py
 ```
 
-### Результат:
-- **Linux**: файл `dist/ymusic` (одиночный бинарный ELF-файл).
-- **Windows**: файл `dist/ymusic.exe` (одиночный PE32+ исполняемый файл).
+### Build Artifacts:
+- **Linux**: `dist/linux/ymusic` (single ELF binary) and `releases/ymusic-v0.2.0-linux-x64.tar.gz`.
+- **Windows**: `dist/windows/ymusic.exe` (single PE32+ executable) and `releases/ymusic-v0.2.0-windows-x64.zip`.
 
-> **Гарантия безопасности сборки:**
-> Скрипт `build.py` перед сборкой проверяет проект и блокирует любые файлы токенов, `config.json` и локальные данные пользователя от попадания в скомпилированный архив.
+> **Build Security Guarantee:**
+> Before packaging, `build.py` validates the workspace and blocks any token files, `config.json`, or private user credentials from being included in the resulting binaries or archives.
 
 ---
 
-## Расположение файлов конфигурации
+## Configuration & Log Locations
 
-Конфигурация создается автоматически в системном профиле пользователя:
-- **Linux**: `~/.config/ymusic-cli/config.json` (права доступа `0600`)
+Configuration is stored automatically in the operating system's protected user directory:
+- **Linux**: `~/.config/ymusic-cli/config.json` (chmod `0600`)
 - **Windows**: `%APPDATA%\ymusic-cli\config.json`
-- **Логи**: `~/.cache/ymusic-cli/ymusic.log` (Linux) или `%LOCALAPPDATA%\ymusic-cli\ymusic.log` (Windows).
+- **Logs**: `~/.cache/ymusic-cli/ymusic.log` (Linux) or `%LOCALAPPDATA%\ymusic-cli\ymusic.log` (Windows).
 
 ---
 
-## Решение возможных проблем (Troubleshooting)
+## Troubleshooting
 
-### 1. `Cannot find libmpv` или `mpv is not installed`
-- **Linux**: Убедитесь, что установлен пакет `libmpv1` или `libmpv2` / `libmpv-dev`.
-- **Windows**: Убедитесь, что библиотека `libmpv-2.dll` доступна в `PATH` или положена в ту же папку, где запускается `ymusic.exe`.
+### 1. `Cannot find libmpv` or `mpv is not installed`
+- **Linux**: Verify that `libmpv1` or `libmpv2` / `libmpv-dev` package is installed.
+- **Windows**: Verify that `libmpv-2.dll` is in your `PATH` or placed directly in the same folder as `ymusic.exe`.
 
-### 2. В терминале Windows отображаются кракозябры или квадратики вместо кассеты
-- Стандартный `cmd.exe` имеет устаревший вывод. Запустите **Windows Terminal**.
-- Выполните в консоли: `chcp 65001` (переключение кодовой страницы на UTF-8).
-- Убедитесь, что в настройках терминала выбран шрифт с поддержкой символов псевдографики (например, *Cascadia Code*, *JetBrains Mono*, *Fira Code*).
+### 2. Garbled characters or question marks on Windows
+- Standard `cmd.exe` lacks modern unicode support. Launch **Windows Terminal**.
+- In the console, execute: `chcp 65001` (switch active code page to UTF-8).
+- Ensure your terminal uses a font with full box-drawing glyphs (e.g. *Cascadia Code*, *JetBrains Mono*, *Fira Code*).
 
-### 3. Ошибка прав на Linux: `Permission denied: ./ymusic`
-Выдайте флаг на исполнение бинарника:
+### 3. Linux permission error: `Permission denied: ./ymusic`
+Mark the executable file as executable:
 ```bash
-chmod +x ./dist/ymusic
+chmod +x ./dist/linux/ymusic
 ```
 
-### 4. Нет звука в Linux (PulseAudio / PipeWire)
-Убедитесь, что `mpv` может воспроизводить звук в вашей системе, проверив команду:
+### 4. No sound on Linux (PulseAudio / PipeWire)
+Verify that `mpv` can play audio on your system:
 ```bash
-mpv --ao=pulse /path/to/any_audio.mp3
+mpv --ao=pulse /path/to/sample.mp3
 ```
-Если используется PipeWire, пакет `pipewire-pulse` должен быть активен.
+If using PipeWire, ensure `pipewire-pulse` is active.
