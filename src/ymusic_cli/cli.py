@@ -82,36 +82,126 @@ def format_track_line(i: int, t: TrackInfo, playing_id: str | None = None) -> Te
     return line
 
 
-def print_track_table(tracks: list[TrackInfo], title: str, playing_id: str | None = None) -> None:
-    """Print a list of tracks as a compact table."""
+def print_track_table(
+    tracks: list[TrackInfo],
+    title: str,
+    playing_id: str | None = None,
+    current_index: int | None = None,
+    show_all: bool = False,
+    console_out: Console | None = None,
+) -> None:
+    """Print a list of tracks as a compact 3-track sliding window table (Prev, Playing, Next)."""
+    out = console_out or console
+    if not tracks:
+        out.print("[dim]Список треков пуст.[/dim]")
+        return
+
+    # Determine currently active index
+    cur_idx = 0
+    if current_index is not None and 0 <= current_index < len(tracks):
+        cur_idx = current_index
+    elif playing_id is not None:
+        for idx, t in enumerate(tracks):
+            if str(t.id) == str(playing_id):
+                cur_idx = idx
+                break
+
+    # If show_all requested or total tracks <= 3, show all
+    if show_all or len(tracks) <= 3:
+        indices = list(range(len(tracks)))
+    else:
+        # 3-track sliding window: previous, current (playing), next
+        if cur_idx == 0:
+            indices = [0, 1, 2]
+        elif cur_idx >= len(tracks) - 1:
+            indices = [len(tracks) - 3, len(tracks) - 2, len(tracks) - 1]
+        else:
+            indices = [cur_idx - 1, cur_idx, cur_idx + 1]
+
+    if len(tracks) > 3 and not show_all:
+        display_title = f"{title} [dim]— 3 из {len(tracks)} треков[/dim]"
+    else:
+        display_title = title
+
+    caption = (
+        f"[dim]Позиция: {cur_idx + 1}/{len(tracks)} • "
+        f"Команды: [bold]n[/bold] (след), [bold]p[/bold] (пред), [bold]play <номер>[/bold][/dim]"
+    )
+
     table = Table(
         show_header=True,
         header_style="bold cyan",
         border_style="dim",
         padding=(0, 1),
-        title=title,
+        title=display_title,
         title_style="bold",
+        caption=caption if len(tracks) > 1 else None,
     )
+    table.add_column("Статус", width=13, justify="center")
     table.add_column("#", width=5, justify="right", style="dim")
-    table.add_column("Title", ratio=3)
-    table.add_column("Artist", ratio=2, style="cyan")
-    table.add_column("Album", ratio=2, style="dim")
-    table.add_column("Time", width=6, justify="right", style="dim")
+    table.add_column("Название", ratio=3)
+    table.add_column("Исполнитель", ratio=2, style="cyan")
+    table.add_column("Альбом", ratio=2, style="dim")
+    table.add_column("Время", width=6, justify="right", style="dim")
 
-    for i, t in enumerate(tracks):
-        is_playing = playing_id is not None and str(t.id) == playing_id
-        marker = "▶" if is_playing else ""
-        num = f"{marker} {i+1}"
-        t_style = "bold green" if is_playing else ""
+    for i in indices:
+        t = tracks[i]
+        is_playing = playing_id is not None and str(t.id) == str(playing_id)
+        is_cur = i == cur_idx
+
+        if is_playing:
+            status_text = Text("▶ Играет", style="bold green")
+            num_text = Text(f"{i + 1}", style="bold green")
+            title_text = Text(t.title, style="bold white")
+            artist_text = Text(t.artists, style="bold green")
+            album_text = Text(t.album, style="dim")
+            time_text = Text(t.duration_str, style="bold green")
+        elif is_cur:
+            status_text = Text("● Выбран", style="bold cyan")
+            num_text = Text(f"{i + 1}", style="bold cyan")
+            title_text = Text(t.title, style="bold")
+            artist_text = Text(t.artists, style="cyan")
+            album_text = Text(t.album, style="dim")
+            time_text = Text(t.duration_str, style="dim")
+        elif i == cur_idx - 1:
+            status_text = Text("⏮ Предыдущий", style="dim cyan")
+            num_text = Text(f"{i + 1}", style="dim")
+            title_text = Text(t.title, style="dim")
+            artist_text = Text(t.artists, style="dim cyan")
+            album_text = Text(t.album, style="dim")
+            time_text = Text(t.duration_str, style="dim")
+        elif i < cur_idx:
+            status_text = Text("⏮ Ранее", style="dim")
+            num_text = Text(f"{i + 1}", style="dim")
+            title_text = Text(t.title, style="dim")
+            artist_text = Text(t.artists, style="dim")
+            album_text = Text(t.album, style="dim")
+            time_text = Text(t.duration_str, style="dim")
+        elif i == cur_idx + 1:
+            status_text = Text("⏭ Следующий", style="dim yellow")
+            num_text = Text(f"{i + 1}", style="dim")
+            title_text = Text(t.title, style="white")
+            artist_text = Text(t.artists, style="cyan")
+            album_text = Text(t.album, style="dim")
+            time_text = Text(t.duration_str, style="dim")
+        else:
+            status_text = Text("⏭ Далее", style="dim")
+            num_text = Text(f"{i + 1}", style="dim")
+            title_text = Text(t.title, style="dim white")
+            artist_text = Text(t.artists, style="dim cyan")
+            album_text = Text(t.album, style="dim")
+            time_text = Text(t.duration_str, style="dim")
+
         table.add_row(
-            num,
-            Text(t.title, style=t_style or "bold"),
-            Text(t.artists, style="bold green" if is_playing else "cyan"),
-            t.album,
-            t.duration_str,
+            status_text,
+            num_text,
+            title_text,
+            artist_text,
+            album_text,
+            time_text,
         )
 
-    console.print(table)
+    out.print(table)
 
 
 def print_now_playing(player: Player) -> None:
@@ -231,9 +321,9 @@ class YMusicShell:
         elif cmd in ("tab1", "tab2", "tab3", "tab4", "tab5", "tab6"):
             self._cmd_tab(cmd[3:])
         elif cmd == "liked":
-            self._cmd_liked()
+            self._cmd_liked(arg)
         elif cmd == "wave":
-            self._cmd_wave()
+            self._cmd_wave(arg)
         elif cmd == "play":
             self._cmd_play(arg)
         elif cmd == "search":
@@ -265,7 +355,7 @@ class YMusicShell:
         elif cmd == "now":
             self._cmd_now()
         elif cmd == "queue":
-            self._cmd_queue()
+            self._cmd_queue(arg)
         elif cmd == "status":
             self._cmd_status()
         elif cmd == "clear":
@@ -372,29 +462,31 @@ class YMusicShell:
             table.add_row(cmd, desc)
         console.print(table)
 
-    def _cmd_liked(self) -> None:
+    def _cmd_liked(self, arg: str = "") -> None:
         self.active_tab = 2
         console.print(render_tabs(self.active_tab))
         console.print("[dim]Loading liked tracks...[/dim]")
         tracks = self.api.get_liked_tracks(limit=100)
         self.current_tracks = tracks
         self.is_wave_mode = False
+        show_all = (arg.strip().lower() == "all")
         playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
-        print_track_table(tracks, f"❤️  Liked Tracks ({len(tracks)})", playing_id)
+        print_track_table(tracks, "❤️ Избранное", playing_id=playing_id, show_all=show_all)
 
-    def _cmd_wave(self) -> None:
+    def _cmd_wave(self, arg: str = "") -> None:
         self.active_tab = 1
         console.print(render_tabs(self.active_tab))
         console.print("[dim]Starting My Wave...[/dim]")
         tracks = self.api.start_wave()
         self.current_tracks = tracks
         self.is_wave_mode = True
+        show_all = (arg.strip().lower() == "all")
         if tracks:
             self._play_index(0)
             playing_id = str(tracks[0].id)
         else:
             playing_id = None
-        print_track_table(tracks, f"🌊 My Wave ({len(tracks)})", playing_id)
+        print_track_table(tracks, "🌊 Моя Волна", playing_id=playing_id, show_all=show_all)
 
     def _cmd_play(self, arg: str) -> None:
         clean_arg = arg.strip()
@@ -455,7 +547,7 @@ class YMusicShell:
             console.print(f"[yellow]No results for '{q}'.[/yellow]")
             return
         playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
-        print_track_table(tracks, f"🔍 Search: '{q}' ({len(tracks)})", playing_id)
+        print_track_table(tracks, f"🔍 Поиск: '{q}'", playing_id)
 
     def _cmd_playlists(self) -> None:
         self.active_tab = 3
@@ -482,8 +574,9 @@ class YMusicShell:
         if not arg:
             console.print("[dim]Usage: open <N>[/dim]")
             return
+        parts = arg.strip().split()
         try:
-            n = int(arg)
+            n = int(parts[0])
         except ValueError:
             console.print("[red]Usage: open <number>[/red]")
             return
@@ -495,6 +588,7 @@ class YMusicShell:
             console.print(f"[red]Invalid playlist number. Range: 1-{len(self.cached_playlists)}[/red]")
             return
 
+        show_all = len(parts) > 1 and parts[1].lower() == "all"
         pl = self.cached_playlists[n - 1]
         name = pl.title or "Playlist"
         self.active_tab = 3
@@ -504,7 +598,7 @@ class YMusicShell:
         self.current_tracks = tracks
         self.is_wave_mode = False
         playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
-        print_track_table(tracks, f"📁 {name} ({len(tracks)})", playing_id)
+        print_track_table(tracks, f"📁 {name}", playing_id, show_all=show_all)
 
     def _cmd_next(self) -> None:
         if not self.player:
@@ -521,7 +615,9 @@ class YMusicShell:
         if ok:
             t = self.player.state.current_track
             if t:
-                console.print(f"[green]▶[/green] [bold]{t.artists}[/bold] — {t.title}")
+                q = self.player.state.queue
+                idx = self.player.state.queue_index
+                print_track_table(q, "📜 Очередь", playing_id=str(t.id), current_index=idx)
             self._wave_autoload()
         else:
             console.print("[dim]End of queue.[/dim]")
@@ -533,7 +629,9 @@ class YMusicShell:
         if ok:
             t = self.player.state.current_track
             if t:
-                console.print(f"[green]▶[/green] [bold]{t.artists}[/bold] — {t.title}")
+                q = self.player.state.queue
+                idx = self.player.state.queue_index
+                print_track_table(q, "📜 Очередь", playing_id=str(t.id), current_index=idx)
 
     def _cmd_pause(self) -> None:
         if not self.player:
@@ -621,7 +719,7 @@ class YMusicShell:
         if self.player:
             console.print(render_now_card(self.player, self.active_tab))
 
-    def _cmd_queue(self) -> None:
+    def _cmd_queue(self, arg: str = "") -> None:
         self.active_tab = 5
         console.print(render_tabs(self.active_tab))
         if not self.player or not self.player.state.queue:
@@ -629,31 +727,9 @@ class YMusicShell:
             return
         q = self.player.state.queue
         idx = self.player.state.queue_index
-
-        # Show window around current position
-        start = max(0, idx - 3)
-        end = min(len(q), idx + 12)
-        window = q[start:end]
-
-        table = Table(title=f"Queue ({idx+1}/{len(q)})", border_style="dim", padding=(0, 1))
-        table.add_column("#", width=5, justify="right", style="dim")
-        table.add_column("Title", ratio=3)
-        table.add_column("Artist", ratio=2, style="cyan")
-        table.add_column("Time", width=6, justify="right", style="dim")
-
-        for i, t in enumerate(window):
-            actual_i = start + i
-            is_cur = actual_i == idx
-            marker = "▶" if is_cur else ""
-            st = "bold green" if is_cur else ""
-            table.add_row(
-                f"{marker} {actual_i+1}",
-                Text(t.title, style=st or "bold"),
-                Text(t.artists, style="bold green" if is_cur else "cyan"),
-                t.duration_str,
-            )
-
-        console.print(table)
+        show_all = (arg.strip().lower() == "all")
+        playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
+        print_track_table(q, "📜 Очередь", playing_id=playing_id, current_index=idx, show_all=show_all)
 
     def _cmd_status(self) -> None:
         plus = "Active ✓" if self.api.has_plus else "Inactive ✗"
