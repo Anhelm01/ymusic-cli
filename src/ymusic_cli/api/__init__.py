@@ -201,35 +201,52 @@ class YMusicAPI:
             return []
         # Batch fetch — much faster than individual fetch_track() calls
         track_ids = [str(t.id) for t in likes.tracks[:limit]]
-        tracks = self.client.tracks(track_ids)
-        return [TrackInfo.from_ym_track(t) for t in tracks]
+        if not track_ids:
+            return []
+        try:
+            tracks = self.client.tracks(track_ids)
+            return [TrackInfo.from_ym_track(t) for t in tracks]
+        except Exception:
+            return []
 
     def get_playlists(self) -> list[Playlist]:
         """Get user's playlists."""
-        return self.client.users_playlists_list() or []
+        try:
+            return self.client.users_playlists_list() or []
+        except Exception:
+            return []
 
     def get_playlist_tracks(self, playlist: Playlist, limit: int = 100) -> list[TrackInfo]:
         """Fetch tracks from a specific playlist."""
-        uid = self.client.me.account.uid
-        full = self.client.users_playlists(playlist.kind, uid)
-        if not full or not full.tracks:
+        try:
+            uid = self.client.me.account.uid
+            full = self.client.users_playlists(playlist.kind, uid)
+            if not full or not full.tracks:
+                return []
+            # Batch fetch for performance
+            track_ids = []
+            for short in full.tracks[:limit]:
+                tid = short.track_id if hasattr(short, "track_id") else short.id
+                track_ids.append(str(tid))
+            if not track_ids:
+                return []
+            tracks = self.client.tracks(track_ids)
+            return [TrackInfo.from_ym_track(t) for t in tracks]
+        except Exception:
             return []
-        # Batch fetch for performance
-        track_ids = []
-        for short in full.tracks[:limit]:
-            tid = short.track_id if hasattr(short, "track_id") else short.id
-            track_ids.append(str(tid))
-        if not track_ids:
-            return []
-        tracks = self.client.tracks(track_ids)
-        return [TrackInfo.from_ym_track(t) for t in tracks]
 
     def search(self, query: str, limit: int = 20) -> list[TrackInfo]:
         """Search for tracks."""
-        result = self.client.search(query, type_="track")
-        if not result or not result.tracks or not result.tracks.results:
+        q = query.strip()
+        if not q:
             return []
-        return [TrackInfo.from_ym_track(t) for t in result.tracks.results[:limit]]
+        try:
+            result = self.client.search(q, type_="track")
+            if not result or not result.tracks or not result.tracks.results:
+                return []
+            return [TrackInfo.from_ym_track(t) for t in result.tracks.results[:limit]]
+        except Exception:
+            return []
 
     def get_track_url(self, track_info: TrackInfo) -> str | None:
         """Get direct audio stream URL for a track.

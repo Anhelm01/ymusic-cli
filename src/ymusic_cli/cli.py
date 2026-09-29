@@ -2,22 +2,18 @@
 
 from __future__ import annotations
 
-import select
 import sys
-import termios
 import threading
 import time
-import tty
 from typing import Any
 
 from rich.console import Console
 from rich.table import Table
 from rich.text import Text
-from rich.panel import Panel
-from rich.columns import Columns
 
 from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.completion import WordCompleter
+from prompt_toolkit.patch_stdout import patch_stdout
 
 from ymusic_cli.config import Config
 from ymusic_cli.api import YMusicAPI, TrackInfo
@@ -50,12 +46,13 @@ COMMANDS_HELP = {
     "quit / q":   "Exit",
 }
 
-COMPLETIONS = [
+_BASE_COMPLETIONS = [
     "liked", "wave", "play", "search", "playlists", "open",
     "next", "prev", "pause", "stop", "seek", "vol", "volume",
     "repeat", "shuffle", "like", "dislike", "now", "queue",
     "status", "help", "quit", "q", "n", "p", "clear",
 ]
+COMPLETIONS = _BASE_COMPLETIONS + [f"/{c}" for c in _BASE_COMPLETIONS]
 
 
 def format_track_line(i: int, t: TrackInfo, playing_id: str | None = None) -> Text:
@@ -143,7 +140,7 @@ class YMusicShell:
         self._status_thread: threading.Thread | None = None
         self._running = True
 
-    def start(self) -> None:
+    def start(self, initial_command: str | None = None) -> None:
         """Main shell loop."""
         if not check_mpv_available():
             console.print("[red]Error: mpv not installed. sudo pacman -S mpv[/red]")
@@ -168,6 +165,12 @@ class YMusicShell:
         console.print("[dim]Type 'help' for commands, 'liked' to browse tracks, 'wave' for radio.[/dim]")
         console.print()
 
+        if initial_command:
+            parts = initial_command.strip().lstrip("/").split(None, 1)
+            cmd = parts[0].lower()
+            arg = parts[1] if len(parts) > 1 else ""
+            self._dispatch(cmd, arg)
+
         try:
             self._loop()
         except (KeyboardInterrupt, EOFError):
@@ -176,18 +179,24 @@ class YMusicShell:
             self._shutdown()
 
     def _loop(self) -> None:
-        """Main REPL loop."""
+        """Main REPL loop with thread-safe stdout patching."""
         while self._running:
             try:
-                raw = pt_prompt(
-                    "ymusic> ",
-                    completer=self._completer,
-                    complete_while_typing=False,
-                )
+                with patch_stdout():
+                    raw = pt_prompt(
+                        "ymusic> ",
+                        completer=self._completer,
+                        complete_while_typing=False,
+                    )
             except (KeyboardInterrupt, EOFError):
                 break
 
             line = raw.strip()
+            if not line:
+                continue
+
+            if line.startswith("/"):
+                line = line[1:].strip()
             if not line:
                 continue
 
@@ -274,24 +283,30 @@ class YMusicShell:
         tracks = self.api.start_wave()
         self.current_tracks = tracks
         self.is_wave_mode = True
-        playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
+        if tracks:
+            self._play_index(0)
+            playing_id = str(tracks[0].id)
+        else:
+            playing_id = None
         print_track_table(tracks, f"🌊 My Wave ({len(tracks)})", playing_id)
-        console.print("[dim]Type a number to play, 'next'/'prev' to navigate.[/dim]")
 
     def _cmd_play(self, arg: str) -> None:
-        if not arg:
+        clean_arg = arg.strip()
+        if not clean_arg:
             if self.player and self.player.state.current_track and not self.player.state.is_playing:
                 self.player.resume()
                 console.print("[green]▶ Resumed[/green]")
+            elif self.current_tracks:
+                self._play_index(0)
             else:
                 console.print("[dim]Usage: play <N> or just type a track number.[/dim]")
             return
 
         try:
-            n = int(arg)
+            n = int(clean_arg)
         except ValueError:
             # Treat as search + play first result
-            self._cmd_search(arg)
+            self._cmd_search(clean_arg)
             if self.current_tracks:
                 self._play_index(0)
             return
@@ -320,18 +335,19 @@ class YMusicShell:
             console.print(f"[red]Failed to play: {track.title}[/red]")
 
     def _cmd_search(self, query: str) -> None:
-        if not query:
+        q = query.strip()
+        if not q:
             console.print("[dim]Usage: search <query>[/dim]")
             return
-        console.print(f"[dim]Searching '{query}'...[/dim]")
-        tracks = self.api.search(query, limit=30)
+        console.print(f"[dim]Searching '{q}'...[/dim]")
+        tracks = self.api.search(q, limit=30)
         self.current_tracks = tracks
         self.is_wave_mode = False
         if not tracks:
-            console.print(f"[yellow]No results for '{query}'.[/yellow]")
+            console.print(f"[yellow]No results for '{q}'.[/yellow]")
             return
         playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
-        print_track_table(tracks, f"🔍 Search: '{query}' ({len(tracks)})", playing_id)
+        print_track_table(tracks, f"🔍 Search: '{q}' ({len(tracks)})", playing_id)
 
     def _cmd_playlists(self) -> None:
         console.print("[dim]Loading playlists...[/dim]")
@@ -387,9 +403,13 @@ class YMusicShell:
                 self.player.state.current_track, self.player.state.position
             )
         ok = self.player.next_track()
+        if not ok and self.is_wave_mode:
+            self._wave_autoload()
+            ok = self.player.next_track()
         if ok:
             t = self.player.state.current_track
-            console.print(f"[green]▶[/green] [bold]{t.artists}[/bold] — {t.title}")
+            if t:
+                console.print(f"[green]▶[/green] [bold]{t.artists}[/bold] — {t.title}")
             self._wave_autoload()
         else:
             console.print("[dim]End of queue.[/dim]")
@@ -400,7 +420,8 @@ class YMusicShell:
         ok = self.player.prev_track()
         if ok:
             t = self.player.state.current_track
-            console.print(f"[green]▶[/green] [bold]{t.artists}[/bold] — {t.title}")
+            if t:
+                console.print(f"[green]▶[/green] [bold]{t.artists}[/bold] — {t.title}")
 
     def _cmd_pause(self) -> None:
         if not self.player:
@@ -417,16 +438,22 @@ class YMusicShell:
             console.print("[dim]Stopped.[/dim]")
 
     def _cmd_seek(self, arg: str) -> None:
-        if not arg or not self.player:
+        if not self.player or not self.player.state.current_track or not self.player.state.is_playing:
+            console.print("[dim]Nothing playing.[/dim]")
+            return
+        clean_arg = arg.strip()
+        if not clean_arg:
             console.print("[dim]Usage: seek +10, seek -5[/dim]")
             return
         try:
-            sec = float(arg)
+            sec = float(clean_arg)
             self.player.seek(sec)
             time.sleep(0.3)
             console.print(f"[dim]Position: {self.player.state.position_str}[/dim]")
         except ValueError:
             console.print("[red]Usage: seek +10, seek -5[/red]")
+        except Exception as e:
+            console.print(f"[red]Seek error:[/red] {e}")
 
     def _cmd_vol(self, arg: str) -> None:
         if not self.player:
@@ -488,7 +515,6 @@ class YMusicShell:
             return
         q = self.player.state.queue
         idx = self.player.state.queue_index
-        playing_id = str(self.player.state.current_track.id) if self.player.state.current_track else None
 
         # Show window around current position
         start = max(0, idx - 3)
@@ -528,16 +554,20 @@ class YMusicShell:
 
     def _on_track_end(self) -> None:
         """Auto-next on natural track end (called from mpv thread)."""
+        if not self.player or self.player._shutting_down:
+            return
         if self.is_wave_mode and self.api.radio_session and self.player.state.current_track:
             self.api.radio_session.feedback_track_finished(
                 self.player.state.current_track, self.player.state.duration
             )
-        if self.player:
+        ok = self.player.next_track()
+        if not ok and self.is_wave_mode:
+            self._wave_autoload()
             ok = self.player.next_track()
-            if ok:
-                t = self.player.state.current_track
-                # Print from mpv thread — console is thread-safe in rich
-                console.print(f"\n[green]▶[/green] [bold]{t.artists}[/bold] — {t.title}")
+        if ok and self.player.state.current_track:
+            t = self.player.state.current_track
+            # Print from mpv thread — console is thread-safe in rich
+            console.print(f"\n[green]▶[/green] [bold]{t.artists}[/bold] — {t.title}")
             self._wave_autoload()
 
     def _wave_autoload(self) -> None:
@@ -549,7 +579,7 @@ class YMusicShell:
         if idx >= len(q) - 2:
             more = self.api.get_more_wave_tracks()
             if more:
-                self.player.state.queue.extend(more)
+                self.player.extend_queue(more)
                 self.current_tracks = list(self.player.state.queue)
 
     def _shutdown(self) -> None:
