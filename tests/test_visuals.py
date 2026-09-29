@@ -128,7 +128,12 @@ def test_shell_tabs_and_toolbar():
     # Bottom toolbar
     bar = shell._bottom_toolbar()
     assert "Hyper - Cyberpunk 2077" in bar
-    assert "Tab [6]" in bar
+    assert "6: Текст" in bar
+
+    # Test direct digit switching 1-6 via _dispatch
+    for num in range(1, 7):
+        shell._dispatch(str(num), "")
+        assert shell.active_tab == num
 
 
 if __name__ == "__main__":

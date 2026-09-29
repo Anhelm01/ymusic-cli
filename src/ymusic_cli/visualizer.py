@@ -33,12 +33,12 @@ BANNER_LOGO = """
 """
 
 TABS = [
-    (1, "🌊 Моя Волна", "wave"),
-    (2, "❤️ Избранное", "liked"),
-    (3, "📁 Плейлисты", "playlists"),
-    (4, "🔍 Поиск", "search"),
-    (5, "📜 Очередь", "queue"),
-    (6, "🎤 Текст", "lyrics"),
+    (1, "🌊Волна", "wave"),
+    (2, "❤️Лайки", "liked"),
+    (3, "📁Плейлисты", "playlists"),
+    (4, "🔍Поиск", "search"),
+    (5, "📜Очередь", "queue"),
+    (6, "🎤Текст", "lyrics"),
 ]
 
 VINYL_SPIN = ["◜(●)◝", "◟(●)◞", "◜(●)◞", "◟(●)◜"]
@@ -48,7 +48,7 @@ EQUALIZER_PULSES = [
     "▃▄▅▆▇█▇▆",
     "▄▅▆▇█▇▆▅",
     "▅▆▇█▇▆▅▄",
-    "▆▇█▇▆▅▄▃",
+    "▆▇█▆▅▄▃",
     "▇█▇▆▅▄▃▂",
     "█▇▆▅▄▃▂ ",
 ]
@@ -68,22 +68,21 @@ def render_banner(username: str = "", has_plus: bool = True, quality: str = "320
         content,
         border_style="cyan",
         title="[bold yellow]🎵 YANDEX MUSIC CLI[/bold yellow]",
-        subtitle="[dim]Type 'help' or 'vis' for ASCII Visualizer[/dim]",
+        subtitle="[dim]Категории: [1]Волна  [2]Лайки  [3]Плейлисты  [4]Поиск  [5]Очередь  [6]Текст • 'vis' Visualizer[/dim]",
         padding=(0, 2),
     )
 
 
 def render_tabs(active_tab: int = 1) -> Text:
-    """Render top navigation bar with tabs."""
+    """Render top navigation bar with category tabs."""
     bar = Text()
-    bar.append("  ")
+    bar.append(" ")
     for tab_id, name, _ in TABS:
-        is_active = tab_id == active_tab
-        if is_active:
-            bar.append(f" ▰ [{tab_id}] {name} ", style="bold black on cyan")
+        if tab_id == active_tab:
+            bar.append(f"▰[{tab_id}] {name} ", style="bold black on cyan")
         else:
-            bar.append(f" [{tab_id}] {name} ", style="dim")
-        bar.append("  ")
+            bar.append(f"[{tab_id}]", style="bold cyan")
+            bar.append(f" {name} ", style="dim")
     return bar
 
 

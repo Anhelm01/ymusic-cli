@@ -29,34 +29,32 @@ from ymusic_cli.visualizer import (
 console = Console(highlight=False)
 
 COMMANDS_HELP = {
-    "tab <1-6>":  "Switch tab (1:Wave, 2:Liked, 3:Playlists, 4:Search, 5:Queue, 6:Lyrics)",
-    "vis":        "Interactive ASCII audio spectrum visualizer (Esc/q to exit)",
-    "lyrics":     "Show lyrics of the currently playing track",
-    "wave":       "Start My Wave radio (Tab 1)",
-    "liked":      "Show liked tracks (Tab 2)",
-    "playlists":  "List your playlists (Tab 3)",
-    "open N":     "Open playlist number N",
-    "search Q":   "Search for tracks (Tab 4)",
-    "play N":     "Play track number N from the current list",
-    "now":        "Show Now Playing card with animated cassette art",
-    "queue":      "Show play queue (Tab 5)",
-    "next / n":   "Next track",
-    "prev / p":   "Previous track",
-    "pause":      "Toggle pause",
-    "stop":       "Stop playback",
-    "seek +/-N":  "Seek forward/backward N seconds",
-    "vol N":      "Set volume (0-100)",
-    "vol +/-N":   "Adjust volume",
-    "repeat":     "Cycle repeat: off → all → one",
-    "shuffle":    "Toggle shuffle",
-    "like":       "Like current track",
-    "dislike":    "Dislike current track (won't recommend)",
-    "status":     "Show account info",
-    "help":       "Show this help",
-    "quit / q":   "Exit",
+    "1":          "Категория 1: 🌊 Волна (радио)",
+    "2":          "Категория 2: ❤️ Избранное (лайкнутые треки)",
+    "3 [N]":      "Категория 3: 📁 Плейлисты (или '3 N' открыть плейлист N)",
+    "4 [Q]":      "Категория 4: 🔍 Поиск (или '4 <запрос>')",
+    "5":          "Категория 5: 📜 Очередь треков",
+    "6":          "Категория 6: 🎤 Текст текущей песни",
+    "vis":        "Интерактивный ASCII аудио-спектрограф (Esc/q выход)",
+    "play N":     "Воспроизвести трек номер N",
+    "now":        "Карточка Now Playing с анимированной кассетой",
+    "next / n":   "Следующий трек",
+    "prev / p":   "Предыдущий трек",
+    "pause":      "Пауза / продолжить",
+    "stop":       "Остановить воспроизведение",
+    "seek +/-N":  "Перемотка на N секунд",
+    "vol N":      "Громкость (0-100, +N, -N)",
+    "repeat":     "Режим повтора: off → all → one",
+    "shuffle":    "Перемешивание (вкл/выкл)",
+    "like":       "Поставить лайк",
+    "dislike":    "Дизлайк (не рекомендовать)",
+    "status":     "Статус аккаунта и подписки",
+    "help":       "Список всех команд",
+    "quit / q":   "Выход",
 }
 
 _BASE_COMPLETIONS = [
+    "1", "2", "3", "4", "5", "6",
     "tab", "t1", "t2", "t3", "t4", "t5", "t6",
     "vis", "visualizer", "lyrics",
     "liked", "wave", "play", "search", "playlists", "open",
@@ -269,11 +267,13 @@ class YMusicShell:
 
     def _bottom_toolbar(self) -> str:
         s = self.player.state if self.player else None
+        tab_names = {1: "Волна", 2: "Избранное", 3: "Плейлисты", 4: "Поиск", 5: "Очередь", 6: "Текст"}
+        cur_tab = tab_names.get(self.active_tab, str(self.active_tab))
         if s and s.current_track:
             icon = "▶" if s.is_playing else "❚❚"
             t = s.current_track
-            return f" {icon} {t.artists} - {t.title}  [{s.position_str}/{s.duration_str}]  Vol: {s.volume}%  |  Tab [{self.active_tab}]  |  'vis' Visualizer  'lyrics' Lyrics"
-        return f" ■ Idle  |  Tab [{self.active_tab}]  |  'wave', 'liked', 'search <query>', 'vis', 'tab <1-6>', 'help'"
+            return f" {icon} {t.artists} - {t.title} [{s.position_str}/{s.duration_str}] Vol:{s.volume}% | Категория [{self.active_tab}: {cur_tab}] | Цифры [1-6] категории | 'vis'"
+        return f" ■ Idle | Категория [{self.active_tab}: {cur_tab}] | Цифры [1-6]: выбор категорий | 'play <N>', 'help'"
 
     def _loop(self) -> None:
         """Main REPL loop with thread-safe stdout patching."""
@@ -308,18 +308,20 @@ class YMusicShell:
         """Route a command."""
         if cmd in ("q", "quit", "exit"):
             self._running = False
+        elif cmd in ("1", "2", "3", "4", "5", "6"):
+            self._cmd_tab_num(int(cmd), arg)
+        elif cmd in ("t1", "t2", "t3", "t4", "t5", "t6"):
+            self._cmd_tab_num(int(cmd[1:]), arg)
+        elif cmd in ("tab1", "tab2", "tab3", "tab4", "tab5", "tab6"):
+            self._cmd_tab_num(int(cmd[3:]), arg)
+        elif cmd in ("tab", "t"):
+            self._cmd_tab(arg)
         elif cmd == "help":
             self._cmd_help()
         elif cmd in ("vis", "visualizer"):
             self._cmd_vis()
         elif cmd in ("lyrics", "text", "lyric"):
             self._cmd_lyrics()
-        elif cmd in ("tab", "t"):
-            self._cmd_tab(arg)
-        elif cmd in ("t1", "t2", "t3", "t4", "t5", "t6"):
-            self._cmd_tab(cmd[1:])
-        elif cmd in ("tab1", "tab2", "tab3", "tab4", "tab5", "tab6"):
-            self._cmd_tab(cmd[3:])
         elif cmd == "liked":
             self._cmd_liked(arg)
         elif cmd == "wave":
@@ -363,25 +365,50 @@ class YMusicShell:
             console.print(render_tabs(self.active_tab))
             console.print()
         else:
-            # Try as number — play track N
+            # Try as number — play track N (if N > 6 or if play prefix was omitted)
             try:
                 n = int(cmd)
                 self._cmd_play(str(n))
             except ValueError:
-                console.print(f"[red]Unknown command:[/red] {cmd}. Type 'help'.")
+                console.print(f"[red]Неизвестная команда:[/red] {cmd}. Введите 1-6 для выбора категории или 'help'.")
 
     # ── Commands ─────────────────────────────────────────────
 
+    def _cmd_tab_num(self, tab_id: int, arg: str = "") -> None:
+        """Switch category / tab directly by number 1-6."""
+        self.active_tab = tab_id
+        if tab_id == 1:
+            self._cmd_wave(arg)
+        elif tab_id == 2:
+            self._cmd_liked(arg)
+        elif tab_id == 3:
+            if arg:
+                self._cmd_open(arg)
+            else:
+                self._cmd_playlists()
+        elif tab_id == 4:
+            if arg:
+                self._cmd_search(arg)
+            else:
+                console.print(render_tabs(self.active_tab))
+                console.print("[dim]Категория 4: Поиск. Введите: 4 <запрос> или search <запрос>[/dim]")
+        elif tab_id == 5:
+            self._cmd_queue(arg)
+        elif tab_id == 6:
+            self._cmd_lyrics()
+
     def _cmd_tab(self, arg: str) -> None:
         """Switch active tab."""
-        arg = arg.strip()
-        if not arg:
+        parts = arg.strip().split(None, 1)
+        if not parts:
             console.print(render_tabs(self.active_tab))
             return
+        first = parts[0]
+        extra_arg = parts[1] if len(parts) > 1 else ""
         try:
-            tab_id = int(arg)
+            tab_id = int(first)
         except ValueError:
-            arg_lower = arg.lower()
+            arg_lower = first.lower()
             mapping = {
                 "wave": 1, "волна": 1,
                 "liked": 2, "лайки": 2, "избранное": 2,
@@ -393,23 +420,10 @@ class YMusicShell:
             tab_id = mapping.get(arg_lower, 0)
 
         if tab_id < 1 or tab_id > 6:
-            console.print("[red]Invalid tab. Available tabs: 1-6 (wave, liked, playlists, search, queue, lyrics)[/red]")
+            console.print("[red]Неверная категория. Доступны: 1-6 (1:Волна, 2:Избранное, 3:Плейлисты, 4:Поиск, 5:Очередь, 6:Текст)[/red]")
             return
 
-        self.active_tab = tab_id
-        if tab_id == 1:
-            self._cmd_wave()
-        elif tab_id == 2:
-            self._cmd_liked()
-        elif tab_id == 3:
-            self._cmd_playlists()
-        elif tab_id == 4:
-            console.print(render_tabs(self.active_tab))
-            console.print("[dim]Use 'search <query>' to search for tracks, artists, or albums.[/dim]")
-        elif tab_id == 5:
-            self._cmd_queue()
-        elif tab_id == 6:
-            self._cmd_lyrics()
+        self._cmd_tab_num(tab_id, extra_arg)
 
     def _cmd_vis(self) -> None:
         """Launch interactive ASCII spectrum visualizer."""
