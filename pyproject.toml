@@ -1,13 +1,13 @@
 [project]
 name = "ymusic-cli"
-version = "0.1.0"
-description = "TUI player for Yandex Music"
+version = "0.2.0"
+description = "Console player for Yandex Music"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "python-mpv>=1.0.8",
     "rich>=15.0.0",
-    "textual>=8.2.8",
+    "prompt-toolkit>=3.0.0",
     "yandex-music>=3.0.0",
 ]
 
