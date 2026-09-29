@@ -9,9 +9,13 @@ wheels/
 # Build and distribution artifacts
 build/
 dist/
+releases/
 *.spec
 *.exe
 *.bin
+*.zip
+*.tar.gz
+*.tar
 
 # Virtual environments
 .venv/

@@ -48,12 +48,12 @@ jobs:
 
       - name: Verify Built Windows Executable
         run: |
-          .\dist\ymusic.exe --help
-          .\dist\ymusic.exe --version
+          .\dist\windows\ymusic.exe --help
+          .\dist\windows\ymusic.exe --version
 
       - name: Upload Windows Executable Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ymusic-windows-x64
-          path: dist/ymusic.exe
+          path: dist/windows/ymusic.exe
           retention-days: 7
