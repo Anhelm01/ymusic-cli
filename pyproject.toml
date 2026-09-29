@@ -39,5 +39,6 @@ ignore = ["E501", "W291", "E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 norecursedirs = ["Ycli*", ".venv", "build", "dist"]
 

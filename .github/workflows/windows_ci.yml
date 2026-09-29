@@ -26,12 +26,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install -r requirements-dev.txt
+          pip install -e .
 
       - name: Run Pytest Test Suite
+        env:
+          PYTHONPATH: src
         run: |
           pytest -v
 
       - name: Test Windows mpv Auto-Download on Windows Runner
+        env:
+          PYTHONPATH: src
         run: |
           python -c "from ymusic_cli.mpv_windows import ensure_mpv_windows, find_existing_mpv_dll; print('Initial find:', find_existing_mpv_dll()); assert ensure_mpv_windows(auto_download=True), 'Auto-download failed'; print('After download find:', find_existing_mpv_dll()); import mpv; print('Successfully loaded mpv module in Windows VM!')"
 
