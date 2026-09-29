@@ -6,12 +6,10 @@ Cross-platform console player for Yandex Music (Windows & Linux compatible).
 from __future__ import annotations
 
 import logging
-import os
 import sys
-from pathlib import Path
 
-from ymusic_cli.config import Config, get_default_cache_dir
 from ymusic_cli.auth import run_browser_device_auth
+from ymusic_cli.config import Config, get_default_cache_dir
 
 
 def _setup_windows_console() -> None:
@@ -38,6 +36,13 @@ def _setup_windows_console() -> None:
         pass
 
 
+def print_cli_version() -> None:
+    """Print package version."""
+    from ymusic_cli import __version__
+
+    print(f"ymusic {__version__}")
+
+
 def print_cli_help() -> None:
     """Print command-line usage information (strictly emoji-free)."""
     from rich.console import Console
@@ -52,8 +57,9 @@ def print_cli_help() -> None:
     console.print("  ymusic search <query>      Launch and search for tracks")
     console.print("  ymusic vis                 Launch interactive ASCII spectrum visualizer")
     console.print("  ymusic status              Show account info and exit")
-    console.print("  ymusic auth                Auto-login via browser (Device Auth)")
-    console.print("  ymusic auth <token>        Authenticate with explicit token")
+    console.print("  ymusic update, ymusic auth Force update token via browser (Device Auth)")
+    console.print("  ymusic update <token>      Authenticate with explicit token")
+    console.print("  ymusic --version, -v       Show version and exit")
     console.print("  ymusic --help, -h          Show this help message\n")
 
 
@@ -74,7 +80,6 @@ def main() -> None:
 
     from rich.console import Console
     from ymusic_cli.api import YMusicAPI
-    from ymusic_cli.cli import YMusicShell
 
     console = Console(highlight=False)
     args = sys.argv[1:]
@@ -84,8 +89,13 @@ def main() -> None:
         print_cli_help()
         return
 
-    # Handle 'ymusic auth', 'ymusic update-token', 'ymusic token'
-    if args and args[0] in ("auth", "update-token", "token"):
+    # Handle --version / -v
+    if args and args[0] in ("--version", "-v", "version"):
+        print_cli_version()
+        return
+
+    # Handle 'ymusic update', 'ymusic auth', 'ymusic update-token', 'ymusic token'
+    if args and args[0] in ("update", "auth", "update-token", "token"):
         cfg = Config.load()
         if len(args) > 1:
             token = args[1].strip()
@@ -140,6 +150,15 @@ def main() -> None:
             api.login()
         else:
             console.print("[dim]Вы можете запустить 'ymusic auth' позже.[/dim]")
+
+    # Setup Windows mpv if needed before importing player/shell
+    if sys.platform == "win32":
+        from ymusic_cli.mpv_windows import ensure_mpv_windows
+        if not ensure_mpv_windows(console=console):
+            console.print("[red][ERROR] Не удалось инициализировать аудио-движок mpv.[/red]")
+            sys.exit(1)
+
+    from ymusic_cli.cli import YMusicShell
 
     shell = YMusicShell(cfg, api)
     shell.start(initial_command=initial_cmd)

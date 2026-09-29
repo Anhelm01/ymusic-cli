@@ -13,30 +13,13 @@ def _setup_mpv_environment() -> None:
     """Prepare DLL search paths on Windows before importing mpv."""
     if sys.platform != "win32":
         return
-    candidates = [
-        Path(sys.executable).parent,
-        Path(__file__).parent,
-        Path.home() / "scoop" / "apps" / "mpv" / "current",
-        Path.home() / "scoop" / "shims",
-        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "mpv",
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "mpv",
-    ]
-    meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        candidates.insert(0, Path(meipass))
-
-    dll_names = ["mpv-2.dll", "mpv-1.dll", "libmpv-2.dll"]
-    for folder in candidates:
-        if folder.exists():
-            for dll_name in dll_names:
-                if (folder / dll_name).is_file():
-                    os.environ["PATH"] = str(folder) + os.pathsep + os.environ.get("PATH", "")
-                    if hasattr(os, "add_dll_directory"):
-                        try:
-                            os.add_dll_directory(str(folder))
-                        except Exception:
-                            pass
-                    return
+    try:
+        from ymusic_cli.mpv_windows import find_existing_mpv_dll, register_mpv_directory
+        found = find_existing_mpv_dll()
+        if found:
+            register_mpv_directory(found[0])
+    except Exception as e:
+        log.debug("Failed setting up mpv environment: %s", e)
 
 
 _setup_mpv_environment()
@@ -51,6 +34,13 @@ from ymusic_cli.api import TrackInfo, YMusicAPI
 
 def check_mpv_available() -> bool:
     """Check if mpv / libmpv is available on the system."""
+    if sys.platform == "win32":
+        try:
+            from ymusic_cli.mpv_windows import find_existing_mpv_dll
+            if find_existing_mpv_dll() is not None:
+                return True
+        except Exception:
+            pass
     if shutil.which("mpv") is not None:
         return True
     if mpv is not None:
@@ -118,9 +108,21 @@ class Player:
 
     def _init_mpv(self) -> None:
         """Initialise (or re-initialise) the mpv instance."""
+        global mpv
+        if mpv is None and sys.platform == "win32":
+            from ymusic_cli.mpv_windows import ensure_mpv_windows, find_existing_mpv_dll, register_mpv_directory, reload_mpv_module
+            found = find_existing_mpv_dll()
+            if found:
+                register_mpv_directory(found[0])
+            elif ensure_mpv_windows():
+                pass
+            reload_mpv_module()
+            if "mpv" in sys.modules:
+                mpv = sys.modules["mpv"]
+
         if mpv is None:
             instructions = (
-                "На Windows: установите mpv через scoop ('scoop install mpv') или положите mpv-2.dll рядом с ymusic.exe.\n"
+                "На Windows: установите mpv через winget ('winget install mpv.net'), scoop ('scoop install mpv') или положите mpv-2.dll рядом с ymusic.exe.\n"
                 if sys.platform == "win32"
                 else "На Linux: установите mpv/libmpv ('sudo apt install libmpv2' или 'sudo pacman -S mpv').\n"
             )

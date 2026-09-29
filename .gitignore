@@ -29,3 +29,8 @@ config.json
 *.log
 ymusic.log
 
+# Separate clean git folders
+Ycli/
+Ycli_Win/
+Ycli_Lin/
+

@@ -58,6 +58,7 @@ def main() -> None:
         "ymusic_cli.config",
         "ymusic_cli.visualizer",
         "ymusic_cli.auth",
+        "ymusic_cli.mpv_windows",
         "ymusic_cli.cli",
         "ymusic_cli.__main__",
         "rich",

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 import sys
-import threading
 import time
 from typing import Any
 
@@ -54,8 +53,8 @@ COMMANDS_HELP = {
     "shuffle":    "Перемешивание (вкл/выкл)",
     "like":       "Поставить лайк [+] ",
     "dislike":    "Дизлайк [-] (пропустить)",
-    "auth":       "Обновить токен через браузер",
-    "clear / cls":"Очистить экран терминала",
+    "auth / update": "Принудительно обновить токен через браузер",
+    "clear / cls": "Очистить экран терминала",
     "status":     "Статус аккаунта и подписки",
     "help":       "Список всех команд",
     "quit / q":   "Выход",
@@ -68,7 +67,7 @@ _BASE_COMPLETIONS = [
     "liked", "wave", "play", "search", "playlists", "open",
     "next", "prev", "pause", "stop", "seek", "vol", "volume",
     "repeat", "shuffle", "like", "dislike", "now", "queue",
-    "auth", "token", "update-token", "status", "help", "quit", "q", "n", "p", "clear", "cls",
+    "auth", "update", "token", "update-token", "status", "help", "quit", "q", "n", "p", "clear", "cls",
 ]
 COMPLETIONS = _BASE_COMPLETIONS + [f"/{c}" for c in _BASE_COMPLETIONS]
 
@@ -366,7 +365,7 @@ class YMusicShell:
             self._cmd_now()
         elif cmd == "queue":
             self._cmd_queue(arg)
-        elif cmd in ("auth", "token", "update-token"):
+        elif cmd in ("auth", "update", "token", "update-token"):
             self._cmd_auth(arg)
         elif cmd == "status":
             self._cmd_status()

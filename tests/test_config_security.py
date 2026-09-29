@@ -4,14 +4,11 @@ import os
 from pathlib import Path
 from unittest.mock import patch
 
+from ymusic_cli.auth import copy_to_clipboard
 from ymusic_cli.config import (
     Config,
     _is_unsafe_path,
-    get_default_config_dir,
-    get_default_cache_dir,
-    get_default_config_file,
 )
-from ymusic_cli.auth import copy_to_clipboard
 
 
 def test_unsafe_paths():

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
-from yandex_music import Client, Track, Playlist, Artist, Album
+from yandex_music import Client, Playlist, Track
 
 from ymusic_cli.config import Config
 
