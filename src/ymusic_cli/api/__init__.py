@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 
 from yandex_music import Client, Playlist, Track
@@ -129,6 +130,7 @@ class YMusicAPI:
         self.config = config
         self._client: Client | None = None
         self._radio_session: RadioSession | None = None
+        self._url_cache: dict[str, tuple[str, float]] = {}
 
     @property
     def client(self) -> Client:
@@ -248,15 +250,21 @@ class YMusicAPI:
             return []
 
     def get_track_url(self, track_info: TrackInfo) -> str | None:
-        """Get direct audio stream URL for a track.
+        """Get direct audio stream URL for a track (cached for 45s).
 
-        URLs are short-lived (~60s for the XML stage), so always call
-        this right before playback starts.
+        URLs are short-lived (~60s for the XML stage), so cached URLs
+        are reused within 45s to avoid duplicate API roundtrips.
         """
+        tid = str(track_info.id)
+        now = time.time()
+        cached = self._url_cache.get(tid)
+        if cached and (now - cached[1] < 45.0):
+            return cached[0]
+
         try:
             track = track_info._raw
             if track is None:
-                tracks = self.client.tracks([str(track_info.id)])
+                tracks = self.client.tracks([tid])
                 if not tracks:
                     return None
                 track = tracks[0]
@@ -280,7 +288,12 @@ class YMusicAPI:
                 if info.bitrate_in_kbps <= target:
                     best = info
                     break
-            return best.get_direct_link()
+            url = best.get_direct_link()
+            if url:
+                self._url_cache[tid] = (url, now)
+                if len(self._url_cache) > 50:
+                    self._url_cache = {k: v for k, v in self._url_cache.items() if now - v[1] < 45.0}
+            return url
         except Exception:
             return None
 
@@ -308,23 +321,6 @@ class YMusicAPI:
         except Exception:
             return False
 
-    # ── Lyrics ───────────────────────────────────────────────
-
-    def get_track_lyrics(self, track_info: TrackInfo) -> str | None:
-        """Fetch lyrics for a track if available."""
-        try:
-            track = track_info._raw
-            if track is None:
-                tracks = self.client.tracks([str(track_info.id)])
-                if not tracks:
-                    return None
-                track = tracks[0]
-            supp = track.get_supplement()
-            if supp and supp.lyrics:
-                return supp.lyrics.full_lyrics or supp.lyrics.text
-            return None
-        except Exception:
-            return None
 
     # ── My Wave (Radio) ──────────────────────────────────────
 

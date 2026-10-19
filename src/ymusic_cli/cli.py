@@ -16,43 +16,37 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from prompt_toolkit import prompt as pt_prompt
-from prompt_toolkit.completion import WordCompleter
-from prompt_toolkit.patch_stdout import patch_stdout
 
 from ymusic_cli.config import Config
 from ymusic_cli.api import YMusicAPI, TrackInfo
 from ymusic_cli.player import Player, check_mpv_available
 from ymusic_cli.auth import run_browser_device_auth
 from ymusic_cli.visualizer import (
-    render_banner,
-    render_tabs,
+    render_mini_tabs,
+    render_mini_track_bar,
+    render_mini_header,
     render_now_card,
-    run_visualizer,
 )
 
 console = Console(highlight=False)
 
 COMMANDS_HELP = {
-    "1":          "Категория 1: Волна (Моя Волна, радио)",
+    "1":          "Категория 1: Волна (Моя Волна)",
     "2":          "Категория 2: Лайки (Избранные треки)",
     "3 [N]":      "Категория 3: Плейлисты (или '3 N' открыть плейлист N)",
     "4 [Q]":      "Категория 4: Поиск (или '4 <запрос>')",
-    "5":          "Категория 5: Очередь воспроизведения",
-    "6":          "Категория 6: Текст текущей песни",
-    "vis":        "Интерактивный ASCII спектрограф (Esc/q выход)",
     "play N":     "Воспроизвести трек номер N",
-    "now":        "Карточка Now Playing с анимированной кассетой",
+    "now":        "Карточка Now Playing (компактный статус)",
     "next / n":   "Следующий трек",
     "prev / p":   "Предыдущий трек",
-    "pause":      "Пауза / продолжить",
+    "pause / c":  "Пауза / продолжить",
     "stop":       "Остановить воспроизведение",
     "seek +/-N":  "Перемотка на N секунд",
-    "vol N":      "Громкость (0-100, +N, -N)",
-    "repeat":     "Режим повтора: off -> all -> one",
-    "shuffle":    "Перемешивание (вкл/выкл)",
-    "like":       "Поставить лайк [+] ",
-    "dislike":    "Дизлайк [-] (пропустить)",
+    "vol N / +/-": "Громкость (0-100, +N, -N, +, -)",
+    "repeat / r": "Режим повтора: off -> all -> one",
+    "shuffle / s": "Перемешивание (вкл/выкл)",
+    "like / l":   "Поставить лайк [+] ",
+    "dislike / d": "Дизлайк [-] (пропустить)",
     "auth / update": "Принудительно обновить токен через браузер",
     "clear / cls": "Очистить экран терминала",
     "status":     "Статус аккаунта и подписки",
@@ -61,13 +55,14 @@ COMMANDS_HELP = {
 }
 
 _BASE_COMPLETIONS = [
-    "1", "2", "3", "4", "5", "6",
-    "tab", "t1", "t2", "t3", "t4", "t5", "t6",
-    "vis", "visualizer", "lyrics",
+    "1", "2", "3", "4",
+    "tab", "t1", "t2", "t3", "t4",
     "liked", "wave", "play", "search", "playlists", "open",
     "next", "prev", "pause", "stop", "seek", "vol", "volume",
-    "repeat", "shuffle", "like", "dislike", "now", "queue",
+    "repeat", "shuffle", "like", "dislike", "now",
     "auth", "update", "token", "update-token", "status", "help", "quit", "q", "n", "p", "clear", "cls",
+    "волна", "лайки", "избранное", "поиск", "плейлисты", "выход",
+    "с", "т", "з", "д", "в", "к", "ы", "й",
 ]
 COMPLETIONS = _BASE_COMPLETIONS + [f"/{c}" for c in _BASE_COMPLETIONS]
 
@@ -128,10 +123,15 @@ def print_track_table(
     else:
         display_title = title
 
+    try:
+        term_width = out.width or os.get_terminal_size().columns
+    except OSError:
+        term_width = 80
+
     caption = (
         f"[dim]Позиция: {cur_idx + 1}/{len(tracks)} | "
         f"Команды: [bold]n[/bold] (след), [bold]p[/bold] (пред), [bold]play <номер>[/bold][/dim]"
-    )
+    ) if term_width >= 55 else None
 
     table = Table(
         show_header=True,
@@ -142,12 +142,18 @@ def print_track_table(
         title_style="bold",
         caption=caption if len(tracks) > 1 else None,
     )
-    table.add_column("Статус", width=14, justify="center")
-    table.add_column("#", width=5, justify="right", style="dim")
-    table.add_column("Название", ratio=3)
-    table.add_column("Исполнитель", ratio=2, style="cyan")
-    table.add_column("Альбом", ratio=2, style="dim")
-    table.add_column("Время", width=6, justify="right", style="dim")
+
+    include_album = term_width >= 72
+    include_time = term_width >= 48
+
+    table.add_column("Статус", width=14 if term_width >= 55 else 8, justify="center", no_wrap=True)
+    table.add_column("#", width=5 if term_width >= 55 else 3, justify="right", style="dim", no_wrap=True)
+    table.add_column("Название", ratio=3, overflow="ellipsis", no_wrap=True)
+    table.add_column("Исполнитель", ratio=2, style="cyan", overflow="ellipsis", no_wrap=True)
+    if include_album:
+        table.add_column("Альбом", ratio=2, style="dim", overflow="ellipsis", no_wrap=True)
+    if include_time:
+        table.add_column("Время", width=6, justify="right", style="dim", no_wrap=True)
 
     for i in indices:
         t = tracks[i]
@@ -197,20 +203,19 @@ def print_track_table(
             album_text = Text(t.album, style="dim")
             time_text = Text(t.duration_str, style="dim")
 
-        table.add_row(
-            status_text,
-            num_text,
-            title_text,
-            artist_text,
-            album_text,
-            time_text,
-        )
+        row_parts = [status_text, num_text, title_text, artist_text]
+        if include_album:
+            row_parts.append(album_text)
+        if include_time:
+            row_parts.append(time_text)
+
+        table.add_row(*row_parts)
 
     out.print(table)
 
 
 class YMusicShell:
-    """Rich interactive REPL shell for YMusic with clean screen management."""
+    """Rich interactive REPL shell for YMusic with clean screen management and responsive TUI."""
 
     def __init__(self, config: Config, api: YMusicAPI) -> None:
         self.config = config
@@ -221,17 +226,85 @@ class YMusicShell:
         self.active_tab: int = 1
         self.is_wave_mode: bool = False
         self._running = True
-        self._completer = WordCompleter(COMPLETIONS, ignore_case=True)
+        self._notification: str = ""
+        self._custom_view: Any = None
+        self._active_playlist_title: str = ""
+        self._last_search_query: str = ""
+        self._show_all: bool = False
+        self._kb = object()
 
-    def _clear_view(self) -> None:
-        """Clear terminal to keep output neat, uncluttered, and responsive."""
+    def set_notification(self, msg: str) -> None:
+        self._notification = msg
+
+    def _print_playlists_table(self) -> None:
+        if not self.cached_playlists:
+            console.print("[yellow]Плейлисты не найдены.[/yellow]")
+            return
+        table = Table(title="Плейлисты", border_style="dim", padding=(0, 1))
+        table.add_column("#", width=4, justify="right", style="dim")
+        table.add_column("Название", ratio=3, style="bold")
+        try:
+            tw = os.get_terminal_size().columns
+        except OSError:
+            tw = 80
+        if tw >= 45:
+            table.add_column("Треков", width=8, justify="right")
+            for i, pl in enumerate(self.cached_playlists):
+                table.add_row(str(i + 1), pl.title or "Без названия", str(pl.track_count or "?"))
+        else:
+            for i, pl in enumerate(self.cached_playlists):
+                table.add_row(str(i + 1), pl.title or "Без названия")
+        console.print(table)
+        console.print("[dim]Введите 'open N' (или '3 N') чтобы открыть плейлист.[/dim]")
+
+    def _redraw_active_view(self) -> None:
+        """Redraw current active category content or custom message view."""
+        if self._custom_view is not None:
+            console.print(self._custom_view)
+            self._custom_view = None
+            return
+
+        if self.active_tab == 3:
+            if self.current_tracks:
+                playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
+                cur_idx = self.player.state.queue_index if self.player and self.player.state.current_track else None
+                title = f"Плейлист: {self._active_playlist_title}" if self._active_playlist_title else "Плейлист"
+                print_track_table(self.current_tracks, title, playing_id=playing_id, current_index=cur_idx, show_all=self._show_all)
+            else:
+                self._print_playlists_table()
+            return
+
+        if self.active_tab == 4:
+            if self.current_tracks:
+                playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
+                cur_idx = self.player.state.queue_index if self.player and self.player.state.current_track else None
+                title = f"Поиск: '{self._last_search_query}'" if self._last_search_query else "Поиск"
+                print_track_table(self.current_tracks, title, playing_id=playing_id, current_index=cur_idx, show_all=self._show_all)
+            else:
+                console.print("[dim]Категория 4: Поиск. Введите: 4 <запрос> или search <запрос>[/dim]")
+            return
+
+        if self.current_tracks:
+            playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
+            cur_idx = self.player.state.queue_index if self.player and self.player.state.current_track else None
+            title = "Моя Волна" if self.is_wave_mode else "Избранное"
+            print_track_table(self.current_tracks, title, playing_id=playing_id, current_index=cur_idx, show_all=self._show_all)
+        else:
+            console.print("[dim]Категория 1: Волна. Введите '1' для старта радио или '2' для избранного.[/dim]")
+
+    def _clear_view(self, redraw_content: bool = False) -> None:
+        """Clear terminal and render compact mini header."""
         if sys.platform == "win32":
             os.system("cls")
         else:
-            sys.stdout.write("\033[2J\033[H")
+            sys.stdout.write("\033[H\033[2J")
             sys.stdout.flush()
-        console.print(render_tabs(self.active_tab))
+        console.print(render_mini_tabs(self.active_tab))
+        if self.player:
+            console.print(render_mini_track_bar(self.player))
         console.print()
+        if redraw_content:
+            self._redraw_active_view()
 
     def start(self, initial_command: str | None = None) -> None:
         """Launch the shell."""
@@ -242,28 +315,15 @@ class YMusicShell:
         self.player = Player(self.api, volume=self.config.volume)
         self.player.on_end(self._on_track_end)
 
-        # Clear screen and display clean header
-        if sys.platform == "win32":
-            os.system("cls")
-        else:
-            sys.stdout.write("\033[2J\033[H")
-            sys.stdout.flush()
-
-        console.print(
-            render_banner(
-                username=self.api.username or "",
-                has_plus=self.api.has_plus,
-                quality=self.config.quality,
-            )
-        )
-        console.print(render_tabs(self.active_tab))
-        console.print()
+        # Clear screen and display clean header + content
+        self._clear_view(redraw_content=True)
 
         if initial_command:
             parts = initial_command.strip().lstrip("/").split(None, 1)
             cmd = parts[0].lower()
             arg = parts[1] if len(parts) > 1 else ""
             self._dispatch(cmd, arg)
+            self._clear_view(redraw_content=True)
 
         try:
             self._loop()
@@ -274,35 +334,83 @@ class YMusicShell:
 
     def _bottom_toolbar(self) -> str:
         s = self.player.state if self.player else None
-        tab_names = {1: "Волна", 2: "Избранное", 3: "Плейлисты", 4: "Поиск", 5: "Очередь", 6: "Текст"}
+        tab_names = {1: "Волна", 2: "Лайки", 3: "Плейлисты", 4: "Поиск"}
         cur_tab = tab_names.get(self.active_tab, str(self.active_tab))
+        try:
+            w = os.get_terminal_size().columns
+        except OSError:
+            w = 80
+
+        notif = ""
+        if self._notification:
+            notif = f" | {self._notification}"
+            self._notification = ""
+
         if s and s.current_track:
-            icon = ">" if s.is_playing else "||"
+            icon = "▶" if s.is_playing else "⏸"
             t = s.current_track
-            return f" {icon} {t.artists} - {t.title} [{s.position_str}/{s.duration_str}] Vol:{s.volume}% | Категория [{self.active_tab}: {cur_tab}] | Цифры [1-6] категории | 'vis'"
-        return f" [-] Idle | Категория [{self.active_tab}: {cur_tab}] | Цифры [1-6]: выбор категорий | 'play <N>', 'help'"
+            base = f" {icon} {t.artists} - {t.title}"
+            pos = f" [{s.position_str}/{s.duration_str}]"
+            vol = f" 🔊{s.volume}%"
+            tab = f" [{self.active_tab}: {cur_tab}]"
+
+            if w < 50:
+                tab = f" [{self.active_tab}]"
+                avail = max(6, w - len(vol) - len(tab) - len(notif) - 2)
+                if len(base) > avail:
+                    base = base[: max(1, avail - 1)] + "…"
+                return f"{base}{vol}{tab}{notif}"
+            elif w < 72:
+                avail = max(6, w - len(pos) - len(vol) - len(tab) - len(notif) - 2)
+                if len(base) > avail:
+                    base = base[: max(1, avail - 1)] + "…"
+                return f"{base}{pos}{vol}{tab}{notif}"
+            else:
+                avail = w - len(pos) - len(vol) - len(tab) - len(notif) - 2
+                if len(base) > avail and avail > 10:
+                    base = base[:avail - 1] + "…"
+                return f"{base}{pos}{vol}{tab}{notif}"
+
+        if w < 40:
+            return f" · Idle [{self.active_tab}]"
+        elif w < 60:
+            return f" · Idle | [{self.active_tab}: {cur_tab}] | 'help'"
+        return f" · Idle | [{self.active_tab}: {cur_tab}] | 1-4: категории | 'help'"
 
     def _loop(self) -> None:
-        """Main REPL loop with thread-safe stdout patching."""
+        """Main REPL loop with native readline support and auto-clean."""
+        try:
+            import readline
+            readline.set_completer_delims(" \t\n/")
+
+            def _readline_completer(text: str, state: int):
+                matches = [c for c in COMPLETIONS if c.lower().startswith(text.lower())]
+                if state < len(matches):
+                    return matches[state]
+                return None
+
+            readline.set_completer(_readline_completer)
+            readline.parse_and_bind("tab: complete")
+        except (ImportError, AttributeError):
+            pass
+
         while self._running:
+            prompt_str = f"ymusic [{self._notification}]> " if self._notification else "ymusic> "
+            self._notification = ""
             try:
-                with patch_stdout():
-                    raw = pt_prompt(
-                        "ymusic> ",
-                        completer=self._completer,
-                        complete_while_typing=False,
-                        bottom_toolbar=self._bottom_toolbar,
-                    )
+                raw = input(prompt_str)
             except (KeyboardInterrupt, EOFError):
                 break
 
             line = raw.strip()
             if not line:
+                self._clear_view(redraw_content=True)
                 continue
 
             if line.startswith("/"):
                 line = line[1:].strip()
             if not line:
+                self._clear_view(redraw_content=True)
                 continue
 
             parts = line.split(None, 1)
@@ -311,24 +419,24 @@ class YMusicShell:
 
             self._dispatch(cmd, arg)
 
+            # Auto-clear and self-refresh window after every console input
+            if self._running and cmd not in ("auth", "update", "token", "update-token"):
+                self._clear_view(redraw_content=True)
+
     def _dispatch(self, cmd: str, arg: str) -> None:
         """Route a command."""
         if cmd in ("q", "quit", "exit"):
             self._running = False
-        elif cmd in ("1", "2", "3", "4", "5", "6"):
+        elif cmd in ("1", "2", "3", "4"):
             self._cmd_tab_num(int(cmd), arg)
-        elif cmd in ("t1", "t2", "t3", "t4", "t5", "t6"):
+        elif cmd in ("t1", "t2", "t3", "t4"):
             self._cmd_tab_num(int(cmd[1:]), arg)
-        elif cmd in ("tab1", "tab2", "tab3", "tab4", "tab5", "tab6"):
+        elif cmd in ("tab1", "tab2", "tab3", "tab4"):
             self._cmd_tab_num(int(cmd[3:]), arg)
         elif cmd in ("tab", "t"):
             self._cmd_tab(arg)
         elif cmd == "help":
             self._cmd_help()
-        elif cmd in ("vis", "visualizer"):
-            self._cmd_vis()
-        elif cmd in ("lyrics", "text", "lyric"):
-            self._cmd_lyrics()
         elif cmd in ("liked", "likes"):
             self._cmd_liked(arg)
         elif cmd == "wave":
@@ -353,62 +461,97 @@ class YMusicShell:
             self._cmd_seek(arg)
         elif cmd in ("vol", "volume"):
             self._cmd_vol(arg)
-        elif cmd == "repeat":
+        elif cmd in ("+", "="):
+            self._cmd_vol("+5")
+        elif cmd in ("-", "_"):
+            self._cmd_vol("-5")
+        elif cmd in ("m", "mute"):
+            if self.player:
+                if self.player.state.volume > 0:
+                    self._saved_vol = self.player.state.volume
+                    self._cmd_vol("0")
+                else:
+                    self._cmd_vol(str(getattr(self, "_saved_vol", 50)))
+        elif cmd in ("repeat", "r"):
             self._cmd_repeat()
-        elif cmd == "shuffle":
+        elif cmd in ("shuffle", "s"):
             self._cmd_shuffle()
-        elif cmd == "like":
+        elif cmd in ("like", "l"):
             self._cmd_like()
-        elif cmd == "dislike":
+        elif cmd in ("dislike", "d"):
             self._cmd_dislike()
         elif cmd == "now":
             self._cmd_now()
-        elif cmd == "queue":
-            self._cmd_queue(arg)
         elif cmd in ("auth", "update", "token", "update-token"):
             self._cmd_auth(arg)
         elif cmd == "status":
             self._cmd_status()
         elif cmd in ("clear", "cls"):
-            self._clear_view()
+            self._clear_view(redraw_content=True)
+        # Russian keyboard aliases
+        elif cmd in ("с",):  # Russian 'с' = latin 'c'
+            self._cmd_pause()
+        elif cmd in ("т",):  # Russian 'т' = latin 'n' (next)
+            self._cmd_next()
+        elif cmd in ("з",):  # Russian 'з' = latin 'p' (prev)
+            self._cmd_prev()
+        elif cmd in ("д",):  # Russian 'д' = latin 'l' (like)
+            self._cmd_like()
+        elif cmd in ("в",):  # Russian 'в' = latin 'd' (dislike)
+            self._cmd_dislike()
+        elif cmd in ("к",):  # Russian 'к' = latin 'r' (repeat)
+            self._cmd_repeat()
+        elif cmd in ("ы",):  # Russian 'ы' = latin 's' (shuffle)
+            self._cmd_shuffle()
+        elif cmd in ("й",):  # Russian 'й' = latin 'q' (quit)
+            self._running = False
+        # Russian word commands
+        elif cmd in ("волна",):
+            self._cmd_wave(arg)
+        elif cmd in ("лайки", "избранное"):
+            self._cmd_liked(arg)
+        elif cmd in ("поиск",):
+            self._cmd_search(arg)
+        elif cmd in ("плейлисты",):
+            self._cmd_playlists()
+        elif cmd in ("выход",):
+            self._running = False
         else:
-            # Try as number — play track N (if N > 6 or if play prefix was omitted)
+            # Try as number — play track N (if N > 4 or if play prefix was omitted)
             try:
                 n = int(cmd)
                 self._cmd_play(str(n))
             except ValueError:
-                console.print(f"[red]Неизвестная команда:[/red] {cmd}. Введите 1-6 для выбора категории или 'help'.")
+                self._custom_view = f"[red]Неизвестная команда:[/red] {cmd}. Введите 1-4 для выбора категории или 'help'."
 
     # ── Commands ─────────────────────────────────────────────
 
     def _cmd_tab_num(self, tab_id: int, arg: str = "") -> None:
-        """Switch category / tab directly by number 1-6 with auto-clear."""
+        """Switch category / tab directly by number 1-4."""
+        if tab_id < 1 or tab_id > 4:
+            self._custom_view = f"[red]Неверная категория {tab_id}. Доступны: 1-4[/red]"
+            return
         self.active_tab = tab_id
-        self._clear_view()
         if tab_id == 1:
-            self._cmd_wave(arg, cleared=True)
+            self._cmd_wave(arg)
         elif tab_id == 2:
-            self._cmd_liked(arg, cleared=True)
+            self._cmd_liked(arg)
         elif tab_id == 3:
             if arg:
-                self._cmd_open(arg, cleared=True)
+                self._cmd_open(arg)
             else:
-                self._cmd_playlists(cleared=True)
+                self._cmd_playlists()
         elif tab_id == 4:
             if arg:
-                self._cmd_search(arg, cleared=True)
+                self._cmd_search(arg)
             else:
-                console.print("[dim]Категория 4: Поиск. Введите: 4 <запрос> или search <запрос>[/dim]")
-        elif tab_id == 5:
-            self._cmd_queue(arg, cleared=True)
-        elif tab_id == 6:
-            self._cmd_lyrics(cleared=True)
+                self._custom_view = "[dim]Категория 4: Поиск. Введите: 4 <запрос> или search <запрос>[/dim]"
 
     def _cmd_tab(self, arg: str) -> None:
         """Switch active tab."""
         parts = arg.strip().split(None, 1)
         if not parts:
-            console.print(render_tabs(self.active_tab))
+            self._custom_view = render_mini_tabs(self.active_tab)
             return
         first = parts[0]
         extra_arg = parts[1] if len(parts) > 1 else ""
@@ -421,109 +564,49 @@ class YMusicShell:
                 "liked": 2, "лайки": 2, "избранное": 2,
                 "playlists": 3, "playlist": 3, "плейлисты": 3,
                 "search": 4, "поиск": 4,
-                "queue": 5, "очередь": 5,
-                "lyrics": 6, "текст": 6, "text": 6, "lyric": 6,
             }
             tab_id = mapping.get(arg_lower, 0)
 
-        if tab_id < 1 or tab_id > 6:
-            console.print("[red]Неверная категория. Доступны: 1-6 (1:Волна, 2:Избранное, 3:Плейлисты, 4:Поиск, 5:Очередь, 6:Текст)[/red]")
+        if tab_id < 1 or tab_id > 4:
+            self._custom_view = "[red]Неверная категория. Доступны: 1-4 (1:Волна, 2:Избранное, 3:Плейлисты, 4:Поиск)[/red]"
             return
 
         self._cmd_tab_num(tab_id, extra_arg)
 
-    def _cmd_vis(self) -> None:
-        """Launch interactive ASCII spectrum visualizer."""
-        if not self.player:
-            return
-        run_visualizer(self.player, self.api, console)
-        self._clear_view()
-
-    def _cmd_lyrics(self, cleared: bool = False) -> None:
-        """Display lyrics for the current track."""
-        self.active_tab = 6
-        if not cleared:
-            self._clear_view()
-
-        if not self.player or not self.player.state.current_track:
-            console.print("[dim]Ничего не играет. Запустите трек для просмотра текста.[/dim]")
-            return
-
-        t = self.player.state.current_track
-        console.print("[dim]Загрузка текста...[/dim]")
-        lyrics = self.api.get_track_lyrics(t)
-
-        self._clear_view()
-        if not lyrics:
-            console.print(
-                Panel(
-                    f"[yellow]Текст песни не найден: [bold]{t.title}[/bold] ({t.artists}).[/yellow]",
-                    title="Track Lyrics",
-                    border_style="yellow",
-                    padding=(1, 2),
-                )
-            )
-            return
-
-        console.print(
-            Panel(
-                str(lyrics).strip(),
-                title=f"[bold white]{t.title}[/bold white] - [bold cyan]{t.artists}[/bold cyan]",
-                subtitle="[dim]Yandex Music Lyrics[/dim]",
-                border_style="magenta",
-                padding=(1, 3),
-            )
-        )
-
     def _cmd_help(self) -> None:
-        self._clear_view()
-        table = Table(title="Commands", border_style="dim", show_header=False, padding=(0, 2))
-        table.add_column("Command", style="bold green")
-        table.add_column("Description")
+        table = Table(title="Команды", border_style="dim", show_header=False, padding=(0, 2))
+        table.add_column("Команда", style="bold green")
+        table.add_column("Описание")
         for cmd, desc in COMMANDS_HELP.items():
             table.add_row(cmd, desc)
-        console.print(table)
+        self._custom_view = table
 
-    def _cmd_liked(self, arg: str = "", cleared: bool = False) -> None:
+    def _cmd_liked(self, arg: str = "") -> None:
         self.active_tab = 2
-        if not cleared:
-            self._clear_view()
-        console.print("[dim]Загрузка избранных треков...[/dim]")
+        self.is_wave_mode = False
+        self._show_all = (arg.strip().lower() == "all")
         tracks = self.api.get_liked_tracks(limit=100)
         self.current_tracks = tracks
-        self.is_wave_mode = False
-        show_all = (arg.strip().lower() == "all")
-        playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
-        self._clear_view()
-        print_track_table(tracks, "Избранное", playing_id=playing_id, show_all=show_all)
 
-    def _cmd_wave(self, arg: str = "", cleared: bool = False) -> None:
+    def _cmd_wave(self, arg: str = "") -> None:
         self.active_tab = 1
-        if not cleared:
-            self._clear_view()
-        console.print("[dim]Запуск Моей Волны...[/dim]")
+        self.is_wave_mode = True
+        self._show_all = (arg.strip().lower() == "all")
         tracks = self.api.start_wave()
         self.current_tracks = tracks
-        self.is_wave_mode = True
-        show_all = (arg.strip().lower() == "all")
         if tracks:
-            self._play_index(0, suppress_clear=True)
-            playing_id = str(tracks[0].id)
-        else:
-            playing_id = None
-        self._clear_view()
-        print_track_table(tracks, "Моя Волна", playing_id=playing_id, show_all=show_all)
+            self._play_index(0)
 
     def _cmd_play(self, arg: str) -> None:
         clean_arg = arg.strip()
         if not clean_arg:
             if self.player and self.player.state.current_track and not self.player.state.is_playing:
                 self.player.resume()
-                console.print("[green][PLAY] Resumed[/green]")
+                self.set_notification("[PLAY] Воспроизведение")
             elif self.current_tracks:
                 self._play_index(0)
             else:
-                console.print("[dim]Использование: play <N> или введите номер трека.[/dim]")
+                self._custom_view = "[dim]Использование: play <N> или введите номер трека.[/dim]"
             return
 
         try:
@@ -537,12 +620,12 @@ class YMusicShell:
 
         self._play_index(n - 1)
 
-    def _play_index(self, idx: int, suppress_clear: bool = False) -> None:
+    def _play_index(self, idx: int) -> None:
         if not self.current_tracks:
-            console.print("[yellow]Треки не загружены. Попробуйте '1' (Волна) или 'search <запрос>'.[/yellow]")
+            self._custom_view = "[yellow]Треки не загружены. Попробуйте '1' (Волна) или 'search <запрос>'.[/yellow]"
             return
         if idx < 0 or idx >= len(self.current_tracks):
-            console.print(f"[red]Неверный номер трека. Диапазон: 1-{len(self.current_tracks)}[/red]")
+            self._custom_view = f"[red]Неверный номер трека. Диапазон: 1-{len(self.current_tracks)}[/red]"
             return
 
         track = self.current_tracks[idx]
@@ -551,93 +634,62 @@ class YMusicShell:
         if self.is_wave_mode and self.api.radio_session:
             self.api.radio_session.feedback_track_started(track)
 
-        if not suppress_clear:
-            self._clear_view()
-
         ok = self.player.set_queue(self.current_tracks, start_index=idx)
-        if ok:
-            title_text = "Моя Волна" if self.is_wave_mode else "Список треков"
-            print_track_table(self.current_tracks, title_text, playing_id=str(track.id), current_index=idx)
-        else:
-            console.print(f"[red]Не удалось запустить: {track.title}[/red]")
+        if not ok:
+            self._custom_view = f"[red]Не удалось запустить: {track.title}[/red]"
 
-    def _cmd_search(self, query: str, cleared: bool = False) -> None:
+    def _cmd_search(self, query: str) -> None:
         q = query.strip()
         if not q:
-            console.print("[dim]Использование: search <запрос>[/dim]")
+            self._custom_view = "[dim]Использование: search <запрос>[/dim]"
             return
         self.active_tab = 4
-        if not cleared:
-            self._clear_view()
-        console.print(f"[dim]Поиск: '{q}'...[/dim]")
+        self._last_search_query = q
+        self.is_wave_mode = False
+        self._show_all = False
         tracks = self.api.search(q, limit=30)
         self.current_tracks = tracks
-        self.is_wave_mode = False
-        self._clear_view()
         if not tracks:
-            console.print(f"[yellow]Ничего не найдено по запросу '{q}'.[/yellow]")
-            return
-        playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
-        print_track_table(tracks, f"Поиск: '{q}'", playing_id)
+            self._custom_view = f"[yellow]Ничего не найдено по запросу '{q}'.[/yellow]"
 
-    def _cmd_playlists(self, cleared: bool = False) -> None:
+    def _cmd_playlists(self) -> None:
         self.active_tab = 3
-        if not cleared:
-            self._clear_view()
-        console.print("[dim]Загрузка плейлистов...[/dim]")
         playlists = self.api.get_playlists()
         self.cached_playlists = playlists
-        self._clear_view()
-        if not playlists:
-            console.print("[yellow]Плейлисты не найдены.[/yellow]")
-            return
+        self.current_tracks = []
+        self._active_playlist_title = ""
 
-        table = Table(title="Playlists", border_style="dim", padding=(0, 1))
-        table.add_column("#", width=4, justify="right", style="dim")
-        table.add_column("Name", ratio=3, style="bold")
-        table.add_column("Tracks", width=8, justify="right")
-
-        for i, pl in enumerate(playlists):
-            table.add_row(str(i + 1), pl.title or "Без названия", str(pl.track_count or "?"))
-
-        console.print(table)
-        console.print("[dim]Введите 'open N' (или '3 N') чтобы открыть плейлист.[/dim]")
-
-    def _cmd_open(self, arg: str, cleared: bool = False) -> None:
+    def _cmd_open(self, arg: str) -> None:
         if not arg:
-            console.print("[dim]Использование: open <номер>[/dim]")
+            self._custom_view = "[dim]Использование: open <номер>[/dim]"
             return
         parts = arg.strip().split()
         try:
             n = int(parts[0])
         except ValueError:
-            console.print("[red]Использование: open <номер>[/red]")
+            self._custom_view = "[red]Использование: open <номер>[/red]"
             return
 
         if not self.cached_playlists:
             playlists = self.api.get_playlists()
             self.cached_playlists = playlists
             if not playlists:
-                console.print("[yellow]Плейлисты не найдены.[/yellow]")
+                self._custom_view = "[yellow]Плейлисты не найдены.[/yellow]"
                 return
 
         if n < 1 or n > len(self.cached_playlists):
-            console.print(f"[red]Неверный номер плейлиста. Диапазон: 1-{len(self.cached_playlists)}[/red]")
+            self._custom_view = f"[red]Неверный номер плейлиста. Диапазон: 1-{len(self.cached_playlists)}[/red]"
             return
 
         show_all = len(parts) > 1 and parts[1].lower() == "all"
         pl = self.cached_playlists[n - 1]
         name = pl.title or "Playlist"
         self.active_tab = 3
-        if not cleared:
-            self._clear_view()
-        console.print(f"[dim]Загрузка '{name}'...[/dim]")
+        self._active_playlist_title = name
+        self._show_all = show_all
         tracks = self.api.get_playlist_tracks(pl, limit=100)
         self.current_tracks = tracks
         self.is_wave_mode = False
-        playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
-        self._clear_view()
-        print_track_table(tracks, f"Плейлист: {name}", playing_id, show_all=show_all)
 
     def _cmd_next(self) -> None:
         if not self.player:
@@ -654,14 +706,10 @@ class YMusicShell:
         if ok:
             t = self.player.state.current_track
             if t:
-                self._clear_view()
-                q = self.player.state.queue
-                idx = self.player.state.queue_index
-                title = "Моя Волна" if self.is_wave_mode else "Очередь"
-                print_track_table(q, title, playing_id=str(t.id), current_index=idx)
+                self.set_notification(f">> {t.artists} - {t.title}")
             self._wave_autoload()
         else:
-            console.print("[dim]Конец очереди.[/dim]")
+            self.set_notification("Конец треков")
 
     def _cmd_prev(self) -> None:
         if not self.player:
@@ -670,49 +718,45 @@ class YMusicShell:
         if ok:
             t = self.player.state.current_track
             if t:
-                self._clear_view()
-                q = self.player.state.queue
-                idx = self.player.state.queue_index
-                title = "Моя Волна" if self.is_wave_mode else "Очередь"
-                print_track_table(q, title, playing_id=str(t.id), current_index=idx)
+                self.set_notification(f"<< {t.artists} - {t.title}")
 
     def _cmd_pause(self) -> None:
         if not self.player:
             return
         self.player.toggle_pause()
         if self.player.state.is_playing:
-            console.print("[green][PLAY] Воспроизведение[/green]")
+            self.set_notification("[PLAY] Воспроизведение")
         else:
-            console.print("[yellow][PAUSE] Пауза[/yellow]")
+            self.set_notification("[PAUSE] Пауза")
 
     def _cmd_stop(self) -> None:
         if self.player:
             self.player.stop()
-            console.print("[dim]Остановлено.[/dim]")
+            self.set_notification("Остановлено")
 
     def _cmd_seek(self, arg: str) -> None:
         if not self.player or not self.player.state.current_track or not self.player.state.is_playing:
-            console.print("[dim]Ничего не воспроизводится.[/dim]")
+            self.set_notification("Ничего не играет")
             return
         clean_arg = arg.strip()
         if not clean_arg:
-            console.print("[dim]Использование: seek +10, seek -5[/dim]")
+            self.set_notification("Использование: seek +10, seek -5")
             return
         try:
             sec = float(clean_arg)
             self.player.seek(sec)
-            time.sleep(0.3)
-            console.print(f"[dim]Позиция: {self.player.state.position_str}[/dim]")
+            time.sleep(0.15)
+            self.set_notification(f"Позиция: {self.player.state.position_str}")
         except ValueError:
-            console.print("[red]Использование: seek +10, seek -5[/red]")
+            self.set_notification("Использование: seek +10, seek -5")
         except Exception as e:
-            console.print(f"[red]Ошибка перемотки:[/red] {e}")
+            self.set_notification(f"Ошибка перемотки: {e}")
 
     def _cmd_vol(self, arg: str) -> None:
         if not self.player:
             return
         if not arg:
-            console.print(f"Громкость: {self.player.state.volume}%")
+            self.set_notification(f"Громкость: {self.player.state.volume}%")
             return
         try:
             arg = arg.strip()
@@ -721,60 +765,46 @@ class YMusicShell:
                 self.player.set_volume(self.player.state.volume + delta)
             else:
                 self.player.set_volume(int(arg))
-            console.print(f"Громкость: {self.player.state.volume}%")
+            self.set_notification(f"🔊 {self.player.state.volume}%")
         except ValueError:
-            console.print("[red]Использование: vol 50, vol +10, vol -5[/red]")
+            self.set_notification("Использование: vol 50, vol +10, vol -5")
 
     def _cmd_repeat(self) -> None:
         if self.player:
             self.player.toggle_repeat()
-            console.print(f"Повтор: {self.player.state.repeat}")
+            self.set_notification(f"Повтор: {self.player.state.repeat}")
 
     def _cmd_shuffle(self) -> None:
         if self.player:
             self.player.toggle_shuffle()
             s = "вкл" if self.player.state.shuffle else "выкл"
-            console.print(f"Перемешивание: {s}")
+            self.set_notification(f"Перемешивание: {s}")
 
     def _cmd_like(self) -> None:
         if not self.player or not self.player.state.current_track:
-            console.print("[dim]Ничего не играет.[/dim]")
+            self.set_notification("Ничего не играет")
             return
         t = self.player.state.current_track
         if self.api.like_track(t):
-            console.print(f"[green][+] Лайк: {t.title}[/green]")
+            self.set_notification(f"[+] Лайк: {t.title}")
         else:
-            console.print("[red]Ошибка при установке лайка.[/red]")
+            self.set_notification("Ошибка при установке лайка")
 
     def _cmd_dislike(self) -> None:
         if not self.player or not self.player.state.current_track:
-            console.print("[dim]Ничего не играет.[/dim]")
+            self.set_notification("Ничего не играет")
             return
         t = self.player.state.current_track
         if self.api.dislike_track(t):
-            console.print(f"[yellow][-] Дизлайк: {t.title}[/yellow]")
+            self.set_notification(f"[-] Дизлайк: {t.title}")
             if self.is_wave_mode:
                 self._cmd_next()
         else:
-            console.print("[red]Ошибка при установке дизлайка.[/red]")
+            self.set_notification("Ошибка при установке дизлайка")
 
     def _cmd_now(self) -> None:
         if self.player:
-            self._clear_view()
-            console.print(render_now_card(self.player, self.active_tab))
-
-    def _cmd_queue(self, arg: str = "", cleared: bool = False) -> None:
-        self.active_tab = 5
-        if not cleared:
-            self._clear_view()
-        if not self.player or not self.player.state.queue:
-            console.print("[dim]Очередь пуста.[/dim]")
-            return
-        q = self.player.state.queue
-        idx = self.player.state.queue_index
-        show_all = (arg.strip().lower() == "all")
-        playing_id = str(self.player.state.current_track.id) if self.player and self.player.state.current_track else None
-        print_track_table(q, "Очередь", playing_id=playing_id, current_index=idx, show_all=show_all)
+            self._custom_view = render_now_card(self.player, self.active_tab, compact=True)
 
     def _cmd_auth(self, arg: str = "") -> None:
         """Handle updating token via browser or direct input."""
@@ -791,17 +821,22 @@ class YMusicShell:
         console.print("[dim]Запуск автоматической авторизации в браузере...[/dim]")
         if run_browser_device_auth(self.config, auto_exit=False):
             self.api.login()
-            self._clear_view()
-            console.print(f"[green][OK] Авторизован как: {self.api.username}[/green]")
+            self._clear_view(redraw_content=True)
+            self.set_notification(f"[OK] Авторизован как: {self.api.username}")
 
     def _cmd_status(self) -> None:
         plus = "Активен" if self.api.has_plus else "Не активен"
-        console.print(f"Пользователь: [bold]{self.api.username}[/bold]")
-        console.print(f"Плюс:         {plus}")
-        if self.player:
-            console.print(f"Громкость:    {self.player.state.volume}%")
-            console.print(f"Повтор:       {self.player.state.repeat}")
-            console.print(f"Перемешивание: {'вкл' if self.player.state.shuffle else 'выкл'}")
+        vol = f"{self.player.state.volume}%" if self.player else "N/A"
+        rep = self.player.state.repeat if self.player else "N/A"
+        shuf = ("вкл" if self.player.state.shuffle else "выкл") if self.player else "N/A"
+        txt = (
+            f"Пользователь:  [bold]{self.api.username}[/bold]\n"
+            f"Плюс:          {plus}\n"
+            f"Громкость:     {vol}\n"
+            f"Повтор:        {rep}\n"
+            f"Перемешивание: {shuf}"
+        )
+        self._custom_view = Panel(txt, title="Статус", border_style="cyan", padding=(0, 2))
 
     # ── Internals ────────────────────────────────────────────
 
@@ -819,7 +854,7 @@ class YMusicShell:
             ok = self.player.next_track()
         if ok and self.player.state.current_track:
             t = self.player.state.current_track
-            console.print(f"\n[green]>>[/green] [bold]{t.artists}[/bold] - {t.title}")
+            self.set_notification(f">> {t.artists} - {t.title}")
             self._wave_autoload()
 
     def _wave_autoload(self) -> None:

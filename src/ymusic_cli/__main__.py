@@ -8,7 +8,6 @@ from __future__ import annotations
 import logging
 import sys
 
-from ymusic_cli.auth import run_browser_device_auth
 from ymusic_cli.config import Config, get_default_cache_dir
 
 
@@ -48,14 +47,13 @@ def print_cli_help() -> None:
     from rich.console import Console
 
     console = Console(highlight=False)
-    console.print("[bold]ymusic[/bold] - Console player for Yandex Music with ASCII visuals & tabs\n")
+    console.print("[bold]ymusic[/bold] - Compact console player for Yandex Music\n")
     console.print("[bold cyan]Usage:[/bold cyan]")
     console.print("  ymusic                     Launch interactive player shell")
     console.print("  ymusic 1, ymusic wave      Launch and start My Wave radio immediately")
     console.print("  ymusic 2, ymusic liked     Launch and browse liked tracks")
     console.print("  ymusic play <query/number> Launch and play track or search query")
     console.print("  ymusic search <query>      Launch and search for tracks")
-    console.print("  ymusic vis                 Launch interactive ASCII spectrum visualizer")
     console.print("  ymusic status              Show account info and exit")
     console.print("  ymusic update, ymusic auth Force update token via browser (Device Auth)")
     console.print("  ymusic update <token>      Authenticate with explicit token")
@@ -78,10 +76,6 @@ def main() -> None:
     except OSError:
         pass
 
-    from rich.console import Console
-    from ymusic_cli.api import YMusicAPI
-
-    console = Console(highlight=False)
     args = sys.argv[1:]
 
     # Handle --help / -h
@@ -93,6 +87,11 @@ def main() -> None:
     if args and args[0] in ("--version", "-v", "version"):
         print_cli_version()
         return
+
+    from rich.console import Console
+    from ymusic_cli.api import YMusicAPI
+
+    console = Console(highlight=False)
 
     # Handle 'ymusic update', 'ymusic auth', 'ymusic update-token', 'ymusic token'
     if args and args[0] in ("update", "auth", "update-token", "token"):
@@ -110,6 +109,7 @@ def main() -> None:
             return
 
         # Launch automated browser authorization ("взял токен и свалил")
+        from ymusic_cli.auth import run_browser_device_auth
         success = run_browser_device_auth(cfg, auto_exit=True)
         sys.exit(0 if success else 1)
 
@@ -130,7 +130,7 @@ def main() -> None:
     initial_cmd = None
     if args:
         subcmd = args[0].lower()
-        if subcmd in ("1", "2", "3", "4", "5", "6", "wave", "liked", "playlists", "vis", "lyrics"):
+        if subcmd in ("1", "2", "3", "4", "wave", "liked", "playlists"):
             initial_cmd = subcmd
         elif subcmd in ("play", "search") and len(args) > 1:
             initial_cmd = f"{subcmd} {' '.join(args[1:])}"
@@ -146,6 +146,7 @@ def main() -> None:
     if not api.login():
         console.print("[yellow]Токен Яндекс Музыки недействителен или отсутствует.[/yellow]")
         console.print("Запускаю автоматическое получение токена через браузер...")
+        from ymusic_cli.auth import run_browser_device_auth
         if run_browser_device_auth(cfg, auto_exit=False):
             api.login()
         else:

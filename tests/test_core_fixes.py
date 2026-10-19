@@ -62,7 +62,8 @@ def test_cli_version_and_help(capsys):
 
     print_cli_version()
     captured = capsys.readouterr()
-    assert "ymusic 0.2.0" in captured.out
+    import ymusic_cli
+    assert f"ymusic {ymusic_cli.__version__}" in captured.out
 
     print_cli_help()
     captured = capsys.readouterr()

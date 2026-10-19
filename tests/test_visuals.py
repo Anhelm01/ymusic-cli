@@ -1,61 +1,28 @@
-"""Automated tests for visualizer, tabs, banners, cassette art, and lyrics."""
+"""Automated tests for mini tabs, status cards, and shell UI."""
 
 from unittest.mock import MagicMock
 from rich.console import Console
 
 from ymusic_cli.visualizer import (
-    render_banner,
     render_tabs,
-    render_mini_equalizer,
-    render_cassette,
+    render_mini_tabs,
+    render_mini_track_bar,
+    render_mini_header,
     render_now_card,
-    generate_spectrum_frame,
     TABS,
+    TAB_SPECS,
 )
-from ymusic_cli.api import TrackInfo, YMusicAPI
+from ymusic_cli.api import TrackInfo
 from ymusic_cli.config import Config
 from ymusic_cli.player import PlayerState
 from ymusic_cli.cli import YMusicShell
 
 
-def test_banner():
-    c = Console(record=True)
-    b = render_banner("anhelm", True, "320k")
-    c.print(b)
-    output = c.export_text()
-    assert "anhelm" in output
-    assert "Plus: Active" in output
-    assert "HQ 320k" in output
-
-
 def test_tabs():
-    assert len(TABS) == 6
-    for i in range(1, 7):
+    assert len(TABS) == 4
+    for i in range(1, 5):
         tb = render_tabs(i)
         assert f"[{i}]" in tb.plain
-
-
-def test_mini_equalizer():
-    eq_play = render_mini_equalizer(True, 2)
-    eq_pause = render_mini_equalizer(False, 0)
-    assert eq_play != eq_pause
-
-
-def test_cassette():
-    c_play = render_cassette(True, 1)
-    c_pause = render_cassette(False, 0)
-    assert "╔════" in c_play.plain
-    assert "╚══╧" in c_pause.plain
-
-
-def test_spectrum():
-    spec_play = generate_spectrum_frame(1.0, True, 16, 6)
-    lines_play = spec_play.splitlines()
-    assert len(lines_play) == 6
-
-    spec_pause = generate_spectrum_frame(1.0, False, 16, 6)
-    lines_pause = spec_pause.splitlines()
-    assert len(lines_pause) == 6
 
 
 def test_now_card_idle():
@@ -92,15 +59,6 @@ def test_now_card_playing():
     assert "0:45 / 3:35" in out
 
 
-def test_lyrics_api():
-    raw_track = MagicMock()
-    raw_track.get_supplement.return_value.lyrics.full_lyrics = "Line 1\nLine 2\nLine 3"
-    t = TrackInfo(id=1, title="T", artists="A", album="Alb", duration_ms=1000, _raw=raw_track)
-    api = YMusicAPI(Config())
-    lyrics = api.get_track_lyrics(t)
-    assert lyrics == "Line 1\nLine 2\nLine 3"
-
-
 def test_shell_tabs_and_toolbar():
     dummy = MagicMock()
     t = TrackInfo(id=999, title="Cyberpunk 2077", artists="Hyper", album="OST", duration_ms=215000)
@@ -113,7 +71,6 @@ def test_shell_tabs_and_toolbar():
     dummy.state = s
 
     api = MagicMock()
-    api.get_track_lyrics.return_value = "Test song lyrics\nVerse 1"
     shell = YMusicShell(Config(), api)
     shell.player = dummy
 
@@ -122,28 +79,56 @@ def test_shell_tabs_and_toolbar():
     assert shell.active_tab == 3
 
     # Switch tab by name
-    shell._cmd_tab("lyrics")
-    assert shell.active_tab == 6
+    shell._cmd_tab("search")
+    assert shell.active_tab == 4
 
     # Bottom toolbar
     bar = shell._bottom_toolbar()
     assert "Hyper - Cyberpunk 2077" in bar
-    assert "6: Текст" in bar
+    assert "4: Поиск" in bar
 
-    # Test direct digit switching 1-6 via _dispatch
-    for num in range(1, 7):
+    # Test direct digit switching 1-4 via _dispatch
+    for num in range(1, 5):
         shell._dispatch(str(num), "")
         assert shell.active_tab == num
 
 
+def test_mini_ui():
+    assert len(TAB_SPECS) == 4
+    # Test responsive tabs at various widths
+    t_narrow = render_mini_tabs(1, width=30)
+    assert "1🌊" in t_narrow.plain
+    t_mid = render_mini_tabs(2, width=50)
+    assert "[2]❤️" in t_mid.plain
+    t_wide = render_mini_tabs(3, width=100)
+    assert "[3]📁Плейлисты" in t_wide.plain
+
+    # Test mini track bar
+    dummy = MagicMock()
+    dummy.state = PlayerState()
+    bar_idle = render_mini_track_bar(dummy, width=80)
+    assert "No track" in bar_idle.plain
+
+    t = TrackInfo(id=101, title="Track Title", artists="Artist Name", album="Alb", duration_ms=180000)
+    dummy.state.current_track = t
+    dummy.state.is_playing = True
+    dummy.state.position = 30.0
+    dummy.state.duration = 180.0
+    dummy.state.volume = 75
+    bar_playing = render_mini_track_bar(dummy, width=80)
+    assert "▶" in bar_playing.plain
+    assert "Artist Name" in bar_playing.plain
+    assert "75%" in bar_playing.plain
+
+    # Test mini header
+    header = render_mini_header(dummy, active_tab=1, width=80)
+    assert header is not None
+
+
 if __name__ == "__main__":
-    test_banner()
     test_tabs()
-    test_mini_equalizer()
-    test_cassette()
-    test_spectrum()
     test_now_card_idle()
     test_now_card_playing()
-    test_lyrics_api()
     test_shell_tabs_and_toolbar()
+    test_mini_ui()
     print("ALL TESTS PASSED SUCCESSFULLY!")

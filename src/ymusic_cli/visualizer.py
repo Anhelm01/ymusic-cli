@@ -1,116 +1,142 @@
-"""ASCII visualizer, animated banners, and tab styling for YMusic CLI.
-
-Strict, minimalist terminal design with no emojis, compatible with both
-Linux and Windows terminals.
-"""
+"""Compact TUI components and now-playing status cards for YMusic CLI."""
 
 from __future__ import annotations
 
-import math
 import os
-import random
-import sys
-import time
 from typing import TYPE_CHECKING
 
-from rich.console import Console, Group
+from rich.console import Group
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 
 if TYPE_CHECKING:
     from ymusic_cli.player import Player
-    from ymusic_cli.api import YMusicAPI
 
 
-BANNER_LOGO = """
-  ██╗   ██╗███╗   ███╗██╗   ██╗███████╗██╗ ██████╗ 
-  ╚██╗ ██╔╝████╗ ████║██║   ██║██╔════╝██║██╔════╝ 
-   ╚████╔╝ ██╔████╔██║██║   ██║███████╗██║██║      
-    ╚██╔╝  ██║╚██╔╝██║██║   ██║╚════██║██║██║      
-     ██║   ██║ ╚═╝ ██║╚██████╔╝███████║██║╚██████╗ 
-     ╚═╝   ╚═╝     ╚═╝ ╚═════╝ ╚══════╝╚═╝ ╚═════╝ 
-"""
-
-TABS = [
-    (1, "Волна", "wave"),
-    (2, "Лайки", "liked"),
-    (3, "Плейлисты", "playlists"),
-    (4, "Поиск", "search"),
-    (5, "Очередь", "queue"),
-    (6, "Текст", "lyrics"),
+TAB_SPECS = [
+    (1, "🌊", "Волна", "Влн", "wave"),
+    (2, "❤️", "Лайки", "Лайк", "liked"),
+    (3, "📁", "Плейлисты", "Плей", "playlists"),
+    (4, "🔍", "Поиск", "Пск", "search"),
 ]
 
-CASSETTE_REELS = ["(o)", "(*)", "(@)", "(*)"]
-EQUALIZER_PULSES = [
-    " ▂▃▄▅▆▇█",
-    "▂▃▄▅▆▇█▇",
-    "▃▄▅▆▇█▇▆",
-    "▄▅▆▇█▇▆▅",
-    "▅▆▇█▇▆▅▄",
-    "▆▇█▆▅▄▃",
-    "▇█▇▆▅▄▃▂",
-    "█▇▆▅▄▃▂ ",
-]
+TABS = [(t[0], t[2], t[4]) for t in TAB_SPECS]
 
 
-def render_banner(username: str = "", has_plus: bool = True, quality: str = "320k") -> Panel:
-    """Render minimalist retro banner with user stats (strictly emoji-free)."""
-    logo = Text(BANNER_LOGO, style="bold cyan")
-    plus_badge = "[bold green][Plus: Active][/bold green]" if has_plus else "[bold red][Plus: Inactive][/bold red]"
-    user_badge = f"[bold white]User: {username}[/bold white]" if username else ""
-    hq_badge = f"[bold magenta]HQ {quality}[/bold magenta]"
-
-    info_line = Text.from_markup(f"  {user_badge}   {plus_badge}   {hq_badge}   [dim]v0.2.0[/dim]")
-
-    content = Group(logo, info_line)
-    return Panel(
-        content,
-        border_style="cyan",
-        title="[bold yellow]YANDEX MUSIC CLI[/bold yellow]",
-        subtitle="[dim]Категории: [1]Волна  [2]Лайки  [3]Плейлисты  [4]Поиск  [5]Очередь  [6]Текст | 'vis' Visualizer[/dim]",
-        padding=(0, 2),
-    )
+def _terminal_width(width: int | None = None) -> int:
+    """Return effective terminal width."""
+    if width is not None:
+        return width
+    try:
+        return os.get_terminal_size().columns
+    except OSError:
+        return 80
 
 
-def render_tabs(active_tab: int = 1) -> Text:
-    """Render top navigation bar with category tabs (strictly emoji-free)."""
+def render_mini_tabs(active_tab: int = 1, width: int | None = None) -> Text:
+    """Render responsive compact tab bar with emojis."""
+    w = _terminal_width(width)
     bar = Text()
-    bar.append(" ")
-    for tab_id, name, _ in TABS:
-        if tab_id == active_tab:
-            bar.append(f"[{tab_id}] {name} ", style="bold black on cyan")
+
+    for tab_id, emoji, full_name, abbr, _slug in TAB_SPECS:
+        is_active = tab_id == active_tab
+        style = "bold black on cyan" if is_active else "dim"
+
+        if w < 38:
+            label = f"{tab_id}{emoji} "
+        elif w < 72:
+            label = f"[{tab_id}]{emoji} "
+        elif w < 90:
+            label = f"[{tab_id}]{emoji}{abbr} "
         else:
-            bar.append(f"[{tab_id}]", style="bold cyan")
-            bar.append(f" {name} ", style="dim")
+            label = f"[{tab_id}]{emoji}{full_name} "
+
+        bar.append(label, style=style)
+
     return bar
 
 
-def render_mini_equalizer(is_playing: bool = True, frame: int = 0) -> str:
-    """Render compact pulsing equalizer string."""
-    if not is_playing:
-        return " ▂    ▂ "
-    idx = frame % len(EQUALIZER_PULSES)
-    return EQUALIZER_PULSES[idx]
+def render_tabs(active_tab: int = 1) -> Text:
+    """Alias for render_mini_tabs for backwards compatibility."""
+    return render_mini_tabs(active_tab)
 
 
-def render_cassette(is_playing: bool, frame: int) -> Text:
-    """Render retro cassette ASCII art with animated reels."""
-    spin = CASSETTE_REELS[frame % len(CASSETTE_REELS)] if is_playing else " (o) "
-    art = Text()
-    art.append("  ╔═════════════════════════════╗\n", style="dim cyan")
-    art.append("  ║  [===]  ", style="dim cyan")
-    art.append(f"{spin}", style="bold cyan" if is_playing else "dim")
-    art.append("   ", style="dim cyan")
-    art.append(f"{spin}", style="bold cyan" if is_playing else "dim")
-    art.append("  [===]  ║\n", style="dim cyan")
-    art.append("  ║  ┌───────────────────────┐  ║\n", style="dim cyan")
-    art.append("  ╚══╧═══════════════════════╧══╝", style="dim cyan")
-    return art
+def _format_time(seconds: float) -> str:
+    """Format seconds as m:ss."""
+    m = int(seconds) // 60
+    s = int(seconds) % 60
+    return f"{m}:{s:02d}"
 
 
-def render_now_card(player: Player, active_tab: int = 1, frame: int = 0) -> Panel:
-    """Render rich Now Playing card with animated cassette and audio stats."""
+def render_mini_track_bar(player: "Player", width: int | None = None) -> Text:
+    """Render compact 1-line now-playing bar adapting dynamically to terminal width."""
+    w = _terminal_width(width)
+    s = player.state
+    bar = Text()
+
+    if not s.current_track:
+        bar.append("· ", style="dim")
+        bar.append("No track", style="dim")
+        return bar
+
+    is_playing = s.is_playing
+    icon = "▶" if is_playing else "⏸"
+    icon_style = "bold green" if is_playing else "bold yellow"
+    t = s.current_track
+    artist_title = f"{t.artists} - {t.title}"
+    pos = f"{s.position_str}/{s.duration_str}"
+    vol = f"🔊 {s.volume}%"
+
+    bar.append(f"{icon} ", style=icon_style)
+
+    if w < 32:
+        avail = max(6, w - 3)
+        if len(artist_title) > avail:
+            artist_title = artist_title[: max(1, avail - 1)] + "…"
+        bar.append(artist_title, style="bold")
+        return bar
+
+    if w < 48:
+        avail = max(6, w - len(vol) - 4)
+        if len(artist_title) > avail:
+            artist_title = artist_title[: max(1, avail - 1)] + "…"
+        bar.append(artist_title, style="bold")
+        bar.append(f" {vol}", style="dim")
+        return bar
+
+    if w < 70:
+        avail = max(6, w - len(pos) - len(vol) - 6)
+        if len(artist_title) > avail:
+            artist_title = artist_title[: max(1, avail - 1)] + "…"
+        bar.append(artist_title, style="bold")
+        bar.append(f" · {vol} {pos}", style="dim")
+        return bar
+
+    # Wide: w >= 70
+    progress_w = min(12, max(6, (w - 55) // 3))
+    pct = s.progress
+    filled = int(pct * progress_w)
+    bar_chars = "=" * filled + "*" + "-" * max(0, progress_w - filled)
+
+    extra_len = len(pos) + len(vol) + progress_w + 10
+    avail = max(10, w - extra_len)
+    if len(artist_title) > avail:
+        artist_title = artist_title[: max(1, avail - 1)] + "…"
+
+    bar.append(artist_title, style="bold")
+    bar.append(f" · {vol} [{bar_chars}] {pos}", style="dim")
+    return bar
+
+
+def render_mini_header(player: "Player", active_tab: int = 1, width: int | None = None) -> Group:
+    """Combine mini tabs and mini track bar into a clean 2-line header."""
+    tabs = render_mini_tabs(active_tab, width=width)
+    track = render_mini_track_bar(player, width=width)
+    return Group(tabs, track)
+
+
+def render_now_card(player: "Player", active_tab: int = 1, frame: int = 0, compact: bool = True) -> Panel:
+    """Render sleek, compact Now Playing status card."""
     s = player.state
     if not s.current_track:
         return Panel(
@@ -122,248 +148,29 @@ def render_now_card(player: Player, active_tab: int = 1, frame: int = 0) -> Pane
 
     t = s.current_track
     is_playing = s.is_playing
-    status_icon = "[PLAY]" if is_playing else "[PAUSE]"
+    status_icon = "▶" if is_playing else "⏸"
     status_style = "bold green" if is_playing else "bold yellow"
 
-    # Progress bar
-    bar_width = 18
+    bar_width = 20
     pct = s.progress
     filled = int(pct * bar_width)
     bar_chars = "=" * filled + "*" + "-" * max(0, bar_width - filled)
 
-    cassette = render_cassette(is_playing, frame)
-    eq = render_mini_equalizer(is_playing, frame)
-
     info = Text()
-    info.append(f"{status_icon}  ", style=status_style)
-    info.append(f"{eq}\n", style="bold green" if is_playing else "dim")
+    info.append(f"{status_icon} ", style=status_style)
     info.append(f"{t.artists}", style="bold cyan")
     info.append(" - ", style="dim")
     info.append(f"{t.title}\n", style="bold white")
     if t.album:
         info.append(f"Album: {t.album}\n", style="dim")
-    info.append(f"[{bar_chars}]  {s.position_str} / {s.duration_str}\n", style="bold")
-    info.append("320k MP3", style="bold magenta")
-    info.append(" | Vol: ", style="dim")
-    info.append(f"{s.volume}%", style="bold")
-    info.append(" | Repeat: ", style="dim")
-    info.append(f"{s.repeat}", style="yellow")
-    info.append(" | Shuffle: ", style="dim")
-    info.append("on" if s.shuffle else "off", style="green" if s.shuffle else "dim")
-
-    grid = Table.grid(padding=(0, 2))
-    grid.add_column(no_wrap=True)
-    grid.add_column()
-    grid.add_row(cassette, info)
+    info.append(f"[{bar_chars}]  {s.position_str} / {s.duration_str}", style="bold")
+    info.append("  320k MP3", style="bold magenta")
+    info.append(f"  🔊 {s.volume}%\n", style="bold")
+    info.append(f"Repeat: {s.repeat} | Shuffle: {'on' if s.shuffle else 'off'}", style="dim")
 
     return Panel(
-        grid,
+        info,
         title="[bold cyan]Now Playing[/bold cyan]",
-        subtitle=f"[dim]Queue: {s.queue_index + 1}/{len(s.queue)}[/dim]",
         border_style="green" if is_playing else "yellow",
         padding=(0, 1),
     )
-
-
-def generate_spectrum_frame(t: float, is_playing: bool, num_bars: int = 32, height: int = 10) -> str:
-    """Generate multi-band animated audio spectrum bars."""
-    if not is_playing:
-        rows = []
-        for h in reversed(range(1, height + 1)):
-            row = "  "
-            for _ in range(num_bars):
-                row += "  " if h > 1 else "[dim]--[/dim]"
-            rows.append(row)
-        return "\n".join(rows)
-
-    cols = []
-    for i in range(num_bars):
-        freq_weight = 1.0 - (i / num_bars) * 0.4
-        f1 = math.sin(t * 4.2 + i * 0.35)
-        f2 = math.cos(t * 8.1 - i * 0.55)
-        f3 = math.sin(t * 2.1 + i * 0.9)
-        val = (f1 * 0.45 + f2 * 0.35 + f3 * 0.2 + 1.0) / 2.0
-        val *= freq_weight
-        val += random.uniform(-0.06, 0.06)
-        bar_h = int(max(0.0, min(1.0, val)) * height)
-        cols.append(bar_h)
-
-    rows = []
-    for h in reversed(range(1, height + 1)):
-        row = "  "
-        for c in cols:
-            if c >= h:
-                if h >= height - 2:
-                    row += "[bold red]█ [/bold red]"
-                elif h >= height - 4:
-                    row += "[bold yellow]█ [/bold yellow]"
-                elif h >= 3:
-                    row += "[cyan]█ [/cyan]"
-                else:
-                    row += "[bold green]█ [/bold green]"
-            elif c == h - 1:
-                row += "[dim green]▄ [/dim green]"
-            else:
-                row += "  "
-        rows.append(row)
-    return "\n".join(rows)
-
-
-class KeyPoller:
-    """Cross-platform non-blocking single-key reader for Windows and POSIX."""
-
-    def __init__(self) -> None:
-        self.is_windows = sys.platform == "win32"
-        self.old_settings = None
-
-    def __enter__(self) -> KeyPoller:
-        if not sys.stdin.isatty():
-            return self
-        if not self.is_windows:
-            try:
-                import termios
-                import tty
-                self.old_settings = termios.tcgetattr(sys.stdin)
-                tty.setcbreak(sys.stdin.fileno())
-            except Exception:
-                pass
-        return self
-
-    def __exit__(self, *args) -> None:
-        if not self.is_windows and self.old_settings is not None:
-            try:
-                import termios
-                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_settings)
-            except Exception:
-                pass
-
-    def poll(self, timeout: float = 0.04) -> str | None:
-        """Poll for single keypress within timeout seconds."""
-        if not sys.stdin.isatty():
-            time.sleep(timeout)
-            return None
-
-        if self.is_windows:
-            try:
-                import msvcrt
-                start = time.time()
-                while time.time() - start < timeout:
-                    if msvcrt.kbhit():
-                        ch = msvcrt.getch()
-                        try:
-                            return ch.decode("utf-8")
-                        except UnicodeDecodeError:
-                            return str(ch)
-                    time.sleep(0.01)
-                return None
-            except Exception:
-                time.sleep(timeout)
-                return None
-        else:
-            try:
-                import select
-                rlist, _, _ = select.select([sys.stdin], [], [], timeout)
-                if rlist:
-                    return sys.stdin.read(1)
-            except Exception:
-                time.sleep(timeout)
-            return None
-
-
-def run_visualizer(player: Player, api: YMusicAPI, console: Console) -> None:
-    """Run interactive real-time ASCII audio visualizer (cross-platform, emoji-free)."""
-    if not sys.stdin.isatty():
-        frame = generate_spectrum_frame(1.0, player.state.is_playing)
-        console.print(frame)
-        return
-
-    # Hide cursor
-    sys.stdout.write("\033[?25l")
-    sys.stdout.flush()
-
-    try:
-        with KeyPoller() as poller:
-            running = True
-            t0 = time.time()
-            frame_count = 0
-
-            while running:
-                now = time.time()
-                elapsed = now - t0
-                frame_count += 1
-
-                # Poll keyboard input non-blockingly
-                ch = poller.poll(0.04)
-                if ch:
-                    if ch in ("q", "Q", "\x1b", "\n", "\r"):
-                        break
-                    elif ch == " ":
-                        player.toggle_pause()
-                    elif ch in ("n", "N"):
-                        player.next_track()
-                    elif ch in ("p", "P"):
-                        player.prev_track()
-                    elif ch in ("+", "="):
-                        player.volume_up(5)
-                    elif ch in ("-", "_"):
-                        player.volume_down(5)
-                    elif ch in ("l", "L"):
-                        if player.state.current_track:
-                            api.like_track(player.state.current_track)
-                    elif ch in ("s", "S"):
-                        player.toggle_shuffle()
-                    elif ch in ("r", "R"):
-                        player.toggle_repeat()
-
-                # Render frame
-                s = player.state
-                status_text = "[PLAYING]" if s.is_playing else "[PAUSED]"
-                status_color = "green" if s.is_playing else "yellow"
-
-                try:
-                    term_cols = os.get_terminal_size().columns
-                except OSError:
-                    term_cols = 80
-                num_bars = max(16, min(40, (term_cols - 10) // 2))
-
-                spectrum = generate_spectrum_frame(elapsed, s.is_playing, num_bars=num_bars, height=10)
-
-                title = s.current_track.title if s.current_track else "No Track"
-                artists = s.current_track.artists if s.current_track else "Unknown Artist"
-                pos_str = f"{s.position_str} / {s.duration_str}"
-                spin = CASSETTE_REELS[frame_count % len(CASSETTE_REELS)] if s.is_playing else "(o)"
-
-                bar_len = max(15, min(35, term_cols - 45))
-                filled = int(s.progress * bar_len)
-                progress_line = "=" * filled + "*" + "-" * max(0, bar_len - filled)
-
-                info_text = (
-                    f"\n  [bold cyan]{spin} {artists}[/bold cyan] - [bold white]{title}[/bold white]\n"
-                    f"  [{status_color}]{status_text}[/{status_color}]  "
-                    f"[bold cyan][{progress_line}][/bold cyan]  {pos_str}   Vol: [bold]{s.volume}%[/bold]\n"
-                    f"  [dim]Hotkeys: [Space] Pause  [n/p] Next/Prev  [+/-] Vol  [l] Like  [s] Shuffle  [q] Exit[/dim]"
-                )
-
-                vis_content = Group(
-                    Text.from_markup(spectrum),
-                    Text.from_markup(info_text),
-                )
-
-                panel = Panel(
-                    vis_content,
-                    title="[bold cyan]-- YMUSIC LIVE AUDIO SPECTRUM --[/bold cyan]",
-                    subtitle="[dim]Press [q] or [Esc] to return to shell[/dim]",
-                    border_style="cyan" if s.is_playing else "yellow",
-                    padding=(0, 1),
-                )
-
-                # Clear screen and draw frame
-                if sys.platform == "win32":
-                    sys.stdout.write("\033[H")
-                else:
-                    sys.stdout.write("\033[H\033[J")
-                console.print(panel)
-
-    finally:
-        sys.stdout.write("\033[?25h\n")
-        sys.stdout.flush()

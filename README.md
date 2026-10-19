@@ -4,7 +4,7 @@
   <strong>English</strong> | <strong><a href="README_RU.md">Русский</a></strong>
 </p>
 
-**YMusic CLI** is a modern, fast, and lightweight console music player for **Yandex Music** featuring an ASCII interface, real-time dynamic spectrum visualizer, retro cassette animation, sliding window queue, and automated browser authentication.
+**YMusic CLI** is a modern, fast, and ultra-lightweight (~6.5 MB) console music player for **Yandex Music** featuring a responsive mini-TUI interface, dynamic track bar, 3-track sliding window view, and automated browser authentication.
 
 Cross-platform: first-class support for **Linux** and **Windows** (10 / 11).
 
@@ -12,28 +12,26 @@ Cross-platform: first-class support for **Linux** and **Windows** (10 / 11).
 
 ## Key Features
 
-- **Instant Number Navigation (1–6)**:
-  - `1` / `wave`: **My Wave** — infinite personalized algorithmic radio stream with automatic background track prefetching.
-  - `2` / `liked`: **Favorites** — your personal library of liked tracks.
-  - `3` / `playlists`: **Playlists** — browse your personal and editorial playlists (`3 <N>` to select).
-  - `4` / `search`: **Search** — instant search across tracks, artists, and albums (`4 <query>`).
-  - `5` / `queue`: **Queue** — compact sliding window view of the active playlist.
-  - `6` / `lyrics`: **Lyrics** — view synchronized or plain text lyrics for the currently playing track.
+- **Instant Number Navigation (1–4)**:
+  - `1` / `wave` / `волна`: **My Wave** — infinite personalized algorithmic radio stream with automatic background track prefetching.
+  - `2` / `liked` / `лайки`: **Favorites** — your personal library of liked tracks.
+  - `3` / `playlists` / `плейлисты`: **Playlists** — browse your personal and editorial playlists (`3 <N>` to select).
+  - `4` / `search` / `поиск`: **Search** — instant search across tracks, artists, and albums (`4 <query>`).
+- **Responsive Adaptive Mini-TUI**:
+  - Compact 2-line header adapting dynamically to terminal width (from minimal icon indicators to detailed labels).
+  - Clean auto-clearing screen mechanism after each command execution — zero clutter or cloned headers.
+- **Bilingual & Single-Key Controls**:
+  - Full support for English and Russian keyboard layouts without switching (`c`/`с` for pause, `n`/`т` for next, `p`/`з` for previous, `l`/`д` for like, `d`/`в` for dislike).
 - **Intelligent 3-Track Sliding Window Queue**:
   - `<< Previous`
   - `>> Playing`
   - `>> Next`
-  - To inspect the complete playlist list at any time, pass the `all` flag (e.g. `liked all`, `5 all`).
-- **Interactive Spectrum Visualizer (`vis`)**:
-  - Fullscreen terminal ASCII spectrum analyzer with column gravity and decay physics.
-  - Real-time playback control hotkeys directly inside the visualizer without leaving the view.
-- **Retro Cassette Track Card (`now`)**:
-  - Animated retro cassette with spinning reels, precise playback timeline, and track metadata.
+  - Pass the `all` flag (e.g. `liked all`, `2 all`) to inspect the complete playlist list.
+- **Ultra-Compact Standalone Binary**:
+  - Optimized to **~6.5 MB** on Linux with zero Python dependencies required.
 - **Zero-Friction Device Auth (`auth`)**:
-  - Hassle-free login powered by **Device Auth**: the player automatically generates a code, copies it to your clipboard, and launches `https://ya.ru/device` in your default browser. No manual token inspection in DevTools!
+  - Hassle-free login powered by **Device Auth**: the player automatically generates a code, copies it to your clipboard, and launches `https://ya.ru/device` in your default browser.
   - Tokens and settings are stored strictly in the operating system's protected user profile directory with restrictive permissions and are never bundled into release artifacts or repositories.
-- **Clean Terminal UI**:
-  - Automatic screen management on section switching with zero log spam.
 
 ---
 
@@ -74,10 +72,10 @@ Install `mpv` and development libraries using your distribution's package manage
 
 #### Option A: Run Pre-built Standalone Binary (No Python required)
 
-1. Download the release package (`ymusic-v0.2.0-linux-x64.tar.gz`) from GitHub Releases or locate `dist/linux/ymusic`:
+1. Download the release package (`ymusic-v0.3.0-linux-x64.tar.gz`) from GitHub Releases:
    ```bash
-   tar -xzf ymusic-v0.2.0-linux-x64.tar.gz
-   cd ymusic-v0.2.0-linux-x64
+   tar -xzf ymusic-v0.3.0-linux-x64.tar.gz
+   cd ymusic-v0.3.0-linux-x64
    ```
 2. Grant execution permissions:
    ```bash
@@ -142,7 +140,7 @@ The player requires `libmpv` / `mpv.exe` in your system `PATH`:
   2. Extract `libmpv-2.dll` (or `mpv.exe`) into the same directory as `ymusic.exe`, or add its folder to your system `PATH`.
 
 > [!TIP]
-> **Recommended Windows Terminal**: Use the modern **Windows Terminal** (available free from the Microsoft Store). It provides full ANSI 24-bit color support, UTF-8 rendering, and compatibility with Nerd Fonts / Cascadia Code for crisp cassette and equalizer art.
+> **Recommended Windows Terminal**: Use the modern **Windows Terminal** (available free from the Microsoft Store). It provides full ANSI 24-bit color support, UTF-8 rendering, and compatibility with Nerd Fonts.
 
 ---
 
@@ -150,7 +148,7 @@ The player requires `libmpv` / `mpv.exe` in your system `PATH`:
 
 #### Option A: Run Pre-built Standalone `ymusic.exe`
 
-1. Download and extract `ymusic-v0.2.0-windows-x64.zip`.
+1. Download and extract `ymusic-v0.3.0-windows-x64.zip`.
 2. Open **Windows Terminal** (PowerShell or Command Prompt).
 3. Run the executable:
    ```powershell
@@ -210,7 +208,6 @@ Or pass it via environment variable:
 | `ymusic 2` or `ymusic liked` | Open favorites / liked tracks |
 | `ymusic play <query>` | Search and immediately play first matching track |
 | `ymusic search <query>` | Search library for tracks, artists, and albums |
-| `ymusic vis` | Launch directly into interactive spectrum visualizer |
 | `ymusic status` | Check account info and Plus subscription status |
 | `ymusic update` / `auth` | Force re-authentication via browser |
 | `ymusic --version` / `-v` | Display version information |
@@ -219,64 +216,48 @@ Or pass it via environment variable:
 ### Interactive Shell Controls:
 
 #### Categories (Single digit input):
-- `1` — **My Wave** (infinite personalized radio stream)
-- `2` — **Liked** (compact 3-track sliding window of favorites)
+- `1` / `wave` / `волна` — **My Wave** (infinite personalized radio stream)
+- `2` / `liked` / `лайки` — **Liked** (compact 3-track sliding window of favorites)
 - `2 all` — Display full list of liked tracks
-- `3` — **Playlists** (browse personal and editorial playlists)
+- `3` / `playlists` / `плейлисты` — **Playlists** (browse personal and editorial playlists)
 - `3 <number>` — Load and start playlist number N
-- `4 <query>` — **Search** Yandex Music
-- `5` — **Queue** (current 3 tracks: Previous / Playing / Next)
-- `5 all` — Display entire active playback queue
-- `6` — **Lyrics** (synchronized or plain text lyrics)
+- `4 <query>` / `поиск <query>` — **Search** Yandex Music
 
-#### Visual Screens:
-- `vis` — Fullscreen ASCII spectrum analyzer with column decay physics.
-  - **Visualizer Hotkeys**:
-    - `Space` — Pause / Resume playback
-    - `n` / `p` — Next / Previous track
-    - `+` / `-` — Volume up / down
-    - `l` — Toggle Like on current track
-    - `s` — Shuffle queue
-    - `q` or `Esc` — Exit visualizer back to shell
-- `now` — Now Playing card with animated cassette and audio timeline.
-
-#### Playback Commands:
-- `play <number>` — Play track by index from current list
-- `pause` — Pause or resume playback
-- `stop` — Stop playback completely
-- `n` / `next` — Skip to next track (in My Wave, streams infinitely)
-- `p` / `prev` — Go back to previous track
+#### Playback Hotkeys (Works in English and Russian layouts):
+- `c` / `pause` / `с` — Pause or resume playback
+- `n` / `next` / `т` — Skip to next track
+- `p` / `prev` / `з` — Go back to previous track
+- `l` / `like` / `д` — Like current track
+- `d` / `dislike` / `в` — Dislike current track
+- `now` — Display compact Now Playing info card
 - `seek +/-N` — Seek by N seconds (e.g. `seek +30` or `seek -15`)
 - `vol <0-100>` — Set volume percentage (e.g. `vol 80`)
 - `vol +/-N` — Adjust volume by delta (e.g. `vol +5` or `vol -10`)
 - `repeat` — Cycle repeat mode: `off` -> `all` -> `one`
-- `shuffle` — Shuffle current queue
-- `like` / `dislike` — Rate track: Like [+] or Dislike [-]
+- `shuffle` — Shuffle current playlist
+- `stop` — Stop playback completely
 
 #### Shell System Commands:
 - `clear` / `cls` — Clear terminal screen
 - `status` — Show user profile & Yandex Plus status
 - `update` / `auth` — Force browser authentication update
 - `help` — Print command reference
-- `q` / `quit` / `exit` — Exit the player
+- `q` / `quit` / `exit` / `выход` — Exit the player
 
 ---
 
 ## Building Standalone Executables
 
-You can compile a standalone, single-file binary for your platform using `build.py`:
+You can compile a standalone, single-file binary using `build.py`:
 
 ```bash
-# 1. Install build requirements
-pip install -r requirements-dev.txt
-
-# 2. Run compilation script
-python build.py
+# Compile and create release bundles:
+python build.py --package
 ```
 
 ### Build Artifacts:
-- **Linux**: `dist/linux/ymusic` (single ELF binary) and `releases/ymusic-v0.2.0-linux-x64.tar.gz`.
-- **Windows**: `dist/windows/ymusic.exe` (single PE32+ executable) and `releases/ymusic-v0.2.0-windows-x64.zip`.
+- **Linux**: `dist/linux/ymusic` (single ELF binary, ~6.5 MB) and `releases/ymusic-v0.3.0-linux-x64.tar.gz`.
+- **Windows**: `dist/windows/ymusic.exe` and `releases/ymusic-v0.3.0-windows-x64.zip`.
 
 > **Build Security Guarantee:**
 > Before packaging, `build.py` validates the workspace and blocks any token files, `config.json`, or private user credentials from being included in the resulting binaries or archives.
@@ -295,23 +276,5 @@ Configuration is stored automatically in the operating system's protected user d
 ## Troubleshooting
 
 ### 1. `Cannot find libmpv` or `mpv is not installed`
-- **Linux**: Verify that `libmpv1` or `libmpv2` / `libmpv-dev` package is installed.
+- **Linux**: Verify that `libmpv1` or `libmpv2` / `libmpv-dev` package is installed (`sudo apt install libmpv-dev` or `sudo pacman -S mpv`).
 - **Windows**: Verify that `libmpv-2.dll` is in your `PATH` or placed directly in the same folder as `ymusic.exe`.
-
-### 2. Garbled characters or question marks on Windows
-- Standard `cmd.exe` lacks modern unicode support. Launch **Windows Terminal**.
-- In the console, execute: `chcp 65001` (switch active code page to UTF-8).
-- Ensure your terminal uses a font with full box-drawing glyphs (e.g. *Cascadia Code*, *JetBrains Mono*, *Fira Code*).
-
-### 3. Linux permission error: `Permission denied: ./ymusic`
-Mark the executable file as executable:
-```bash
-chmod +x ./dist/linux/ymusic
-```
-
-### 4. No sound on Linux (PulseAudio / PipeWire)
-Verify that `mpv` can play audio on your system:
-```bash
-mpv --ao=pulse /path/to/sample.mp3
-```
-If using PipeWire, ensure `pipewire-pulse` is active.
