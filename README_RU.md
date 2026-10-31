@@ -4,6 +4,8 @@
   <strong><a href="README.md">English</a></strong> | <strong>Русский</strong>
 </p>
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **YMusic CLI** — современный, быстрый и ультра-легковесный (~6.5 МБ) консольный плеер для **Яндекс Музыки** с адаптивным мини-интерфейсом, динамической строкой трека, скользящим окном очереди и автоматической авторизацией через браузер.
 
 Кроссплатформенный: полноценная поддержка **Linux** и **Windows** (10 / 11).
@@ -276,3 +278,11 @@ python build.py --package
 ### 1. `Cannot find libmpv` или `mpv is not installed`
 - **Linux**: Убедитесь, что установлена библиотека `libmpv1` / `libmpv2` / `libmpv-dev` (`sudo apt install libmpv-dev` или `sudo pacman -S mpv`).
 - **Windows**: Убедитесь, что `libmpv-2.dll` находится в системном `PATH` или положена рядом с `ymusic.exe`.
+
+---
+
+## Лицензия
+
+Проект распространяется под условиями лицензии [MIT](LICENSE).  
+Автор: **Кратюк Матвей** (2026).
+

@@ -4,6 +4,8 @@
   <strong>English</strong> | <strong><a href="README_RU.md">Русский</a></strong>
 </p>
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **YMusic CLI** is a modern, fast, and ultra-lightweight (~6.5 MB) console music player for **Yandex Music** featuring a responsive mini-TUI interface, dynamic track bar, 3-track sliding window view, and automated browser authentication.
 
 Cross-platform: first-class support for **Linux** and **Windows** (10 / 11).
@@ -278,3 +280,11 @@ Configuration is stored automatically in the operating system's protected user d
 ### 1. `Cannot find libmpv` or `mpv is not installed`
 - **Linux**: Verify that `libmpv1` or `libmpv2` / `libmpv-dev` package is installed (`sudo apt install libmpv-dev` or `sudo pacman -S mpv`).
 - **Windows**: Verify that `libmpv-2.dll` is in your `PATH` or placed directly in the same folder as `ymusic.exe`.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).  
+Copyright (c) 2026 Кратюк Матвей.
+
